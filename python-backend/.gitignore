@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model cache (transformers will download models)
+.cache/
+models/
+
+# Logs
+*.log
+
+# Don't ignore the CSV file - we need it for deployment!
+!Chronic Conditions.csv

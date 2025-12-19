@@ -1,0 +1,210 @@
+CHRONIC CONDITIONS,ICD-Code,ICD-Code Description
+Asthma,J45.0,Predominantly allergic asthma
+Asthma,J45.1,Nonallergic asthma
+Asthma,J45.8,Mixed asthma
+Asthma,J45.9,"Asthma, unspecified"
+Asthma,J46,Status asthmaticus
+Chronic Renal Disease,I12.0,Hypertensive renal disease with renal failure
+Chronic Renal Disease,I13.1,Hypertensive heart and renal disease with renal failure
+Chronic Renal Disease,I13.2,Hypertensive heart and renal disease with both (congestive) heart failure and renal failure
+Chronic Renal Disease,N03.0,"Chronic nephritic syndrome, minor glomerular abnormality"
+Chronic Renal Disease,N03.1,"Chronic nephritic syndrome, focal and segmental glomerular lesions"
+Chronic Renal Disease,N03.2,"Chronic nephritic syndrome, diffuse membranous glomerulonephritis"
+Chronic Renal Disease,N03.3,"Chronic nephritic syndrome, diffuse mesangial proliferative glomerulonephritis"
+Chronic Renal Disease,N03.4,"Chronic nephritic syndrome, diffuse endocapillary proliferative glomerulonephritis"
+Chronic Renal Disease,N03.5,"Chronic nephritic syndrome, diffuse mesangiocapillary glomerulonephritis"
+Chronic Renal Disease,N03.6,"Chronic nephritic syndrome, dense deposit disease"
+Chronic Renal Disease,N03.7,"Chronic nephritic syndrome, diffuse crescentic glomerulonephritis"
+Chronic Renal Disease,N03.8,"Chronic nephritic syndrome, other"
+Chronic Renal Disease,N03.9,"Chronic nephritic syndrome, unspecified"
+Chronic Renal Disease,N11.0,Nonobstructive reflux-associated chronic pyelonephritis
+Chronic Renal Disease,N11.1,Chronic obstructive pyelonephritis
+Chronic Renal Disease,N11.8,Other chronic tubulo-interstitial nephritis
+Chronic Renal Disease,N11.9,"Chronic tubulo-interstitial nephritis, unspecified"
+Chronic Renal Disease,N18.0,End-stage renal disease
+Chronic Renal Disease,N18.1,"Chronic kidney disease, stage 1"
+Chronic Renal Disease,N18.2,"Chronic kidney disease, stage 2"
+Chronic Renal Disease,N18.3,"Chronic kidney disease, stage 3"
+Chronic Renal Disease,N18.4,"Chronic kidney disease, stage 4"
+Chronic Renal Disease,N18.5,"Chronic kidney disease, stage 5"
+Chronic Renal Disease,N18.8,Other chronic renal failure
+Chronic Renal Disease,N18.8+I32.8*,Other chronic renal failure / Pericarditis in other diseases classified elsewhere
+Chronic Renal Disease,N18.9,"Chronic renal failure, unspecified"
+Chronic Renal Disease,N25.0,Renal osteodystrophy
+Chronic Renal Disease,O10.3,"Pre-existing hypertensive heart and renal disease complicating pregnancy, childbirth and the puerperium"
+Chronic Renal Disease,O10.2,"Pre-existing hypertensive renal disease complicating pregnancy, childbirth and the puerperium"
+Haemophilia,D66,Hereditary factor VIII deficiency
+Haemophilia,D67,Hereditary factor IX deficiency
+Hyperlipidaemia,E78.0,Pure hypercholesterolaemia
+Hyperlipidaemia,E78.1,Pure hyperglyceridaemia
+Hyperlipidaemia,E78.2,Mixed hyperlipidaemia
+Hyperlipidaemia,E78.3,Hyperchylomicronaemia
+Hyperlipidaemia,E78.4,Other hyperlipidaemia
+Hyperlipidaemia,E78.5,"Hyperlipidaemia, unspecified"
+Cardiomyopathy,I25.5,Ischaemic cardiomyopathy
+Cardiomyopathy,I42.0,Dilated cardiomyopathy
+Cardiomyopathy,I42.1,Obstructive hypertrophic cardiomyopathy
+Cardiomyopathy,I42.2,Other hypertrophic cardiomyopathy
+Cardiomyopathy,I42.3,Endomyocardial (eosinophilic) disease
+Cardiomyopathy,I42.4,Endocardial fibroelastosis
+Cardiomyopathy,I42.5,Other restrictive cardiomyopathy
+Cardiomyopathy,I42.6,Alcoholic cardiomyopathy
+Cardiomyopathy,I42.7,Cardiomyopathy due to drugs and other external agents
+Cardiomyopathy,I42.8,Other cardiomyopathies
+Cardiomyopathy,I42.9,"Cardiomyopathy, unspecified"
+Hypertension,I10,Essential (primary) hypertension
+Hypertension,I11.0,Hypertensive heart disease with (congestive) heart failure
+Hypertension,I11.9,Hypertensive heart disease without (congestive) heart failure
+Hypertension,I12.0,Hypertensive renal disease with renal failure
+Hypertension,I12.9,Hypertensive renal disease without renal failure
+Hypertension,I13.0,Hypertensive heart and renal disease with (congestive) heart failure
+Hypertension,I13.1,Hypertensive heart and renal disease with renal failure
+Hypertension,I13.2,Hypertensive heart and renal disease with both (congestive) heart failure and renal failure
+Hypertension,I13.9,"Hypertensive heart and renal disease, unspecified"
+Hypertension,I15.0,Renovascular hypertension
+Hypertension,I15.1,Hypertension secondary to other renal disorders
+Hypertension,I15.2,Hypertension secondary to endocrine disorders
+Hypertension,I15.8,Other secondary hypertension
+Hypertension,I15.9,"Secondary hypertension, unspecified"
+Hypertension,O10.0,"Pre-existing essential hypertension complicating pregnancy, childbirth and the puerperium"
+Hypertension,O10.1,"Pre-existing hypertensive heart disease complicating pregnancy, childbirth and the puerperium"
+Hypertension,O10.2,"Pre-existing hypertensive renal disease complicating pregnancy, childbirth and the puerperium"
+Hypertension,O10.3,"Pre-existing hypertensive heart and renal disease complicating pregnancy, childbirth and the puerperium"
+Hypertension,O10.4,"Pre-existing secondary hypertension complicating pregnancy, childbirth and the puerperium"
+Hypertension,O10.9,"Unspecified pre-existing hypertension complicating pregnancy, childbirth and the puerperium"
+Hypertension,O11,Pre-existing hypertensive disorder with superimposed proteinuria
+Hypertension,O13,Gestational [pregnancy-induced] hypertension
+Hypertension,O16,Unspecified maternal hypertension
+Cardiac Failure,I11.0,Hypertensive heart disease with (congestive) heart failure
+Cardiac Failure,I13.0,Hypertensive heart and renal disease with (congestive) heart failure
+Cardiac Failure,I13.2,Hypertensive heart and renal disease with both (congestive) heart failure and renal failure
+Cardiac Failure,I50.0,Congestive heart failure
+Cardiac Failure,I50.1,Left ventricular failure
+Cardiac Failure,I50.9,"Heart failure, unspecified"
+Diabetes Mellitus Type 1,G59.0,Diabetic mononeuropathy (E10-E14+ with common fourth character .4)
+Diabetes Mellitus Type 1,G63.2,Diabetic polyneuropathy (E10-E14+ with common fourth character .4)
+Diabetes Mellitus Type 1,E10.0,Insulin-dependent diabetes mellitus with coma
+Diabetes Mellitus Type 1,E10.1,Insulin-dependent diabetes mellitus with ketoacidosis
+Diabetes Mellitus Type 1,E10.2+I79.2*,Insulin-dependent diabetes mellitus with renal complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E10.2+N08.3*,"Insulin-dependent diabetes mellitus with renal complications/Insulin-dependent diabetic nephropathy, intracapillary glomerulonephrosis, Kimmelstiel-Wilson syndrome"
+Diabetes Mellitus Type 1,E10.3+H28.0*,Insulin-dependent diabetes mellitus with ophthalmic complications/ Diabetic cataract
+Diabetes Mellitus Type 1,E10.3+H36.0*,Insulin-dependent diabetes mellitus with ophthalmic complications/ Diabetic retinopathy
+Diabetes Mellitus Type 1,E10.3,Insulin-dependent diabetes mellitus with ophthalmic complications/Diabetic retinopathy (E10-E14+ with common fourth character .3)
+Diabetes Mellitus Type 1,E10.3+I79.2*,Insulin-dependent diabetes mellitus with ophthalmic complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E10.4+G59.0*,Insulin-dependent diabetes mellitus with neurological complications/ Diabetic mononeuropathy
+Diabetes Mellitus Type 1,E10.4+G63.2*,Insulin-dependent diabetes mellitus with neurological complications/ Diabetic polyneuropathy
+Diabetes Mellitus Type 1,E10.4,Insulin-dependent diabetes mellitus with neurological complications/Diabetic polyneuropathy (E10-E14+ with common fourth character .4)
+Diabetes Mellitus Type 1,E10.4+G73.0*,Insulin-dependent diabetes mellitus with neurological complications/ Diabetic amyotrophy
+Diabetes Mellitus Type 1,E10.4+G99.0*,Insulin-dependent diabetes mellitus with neurological complications/Daibeteic autonomic neuropathy and or Diabetic autonomic polyneuropathy
+Diabetes Mellitus Type 1,E10.4+I79.2*,Insulin-dependent diabetes mellitus with neurological complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E10.5,Insulin-dependent diabetes mellitus with peripheral circulatory complications
+Diabetes Mellitus Type 1,E10.6,Insulin-dependent diabetes mellitus with other specified complications
+Diabetes Mellitus Type 1,E10.6+I79.2*,Insulin-dependent diabetes mellitus with other specified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E10.6+M14.2*,Insulin-dependent diabetes mellitus with other specified complications/Diabetic arthropathy
+Diabetes Mellitus Type 1,E10.6+M14.6*,Insulin-dependent diabetes mellitus with other specified complications/Diabetic neuropathic arthropathyarthropathy
+Diabetes Mellitus Type 1,E10.7,Insulin-dependent diabetes mellitus with multiple complications
+Diabetes Mellitus Type 1,E10.7+I79.2*,Insulin-dependent diabetes mellitus with multiple complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E10.8,Insulin-dependent diabetes mellitus with unspecified complications
+Diabetes Mellitus Type 1,E10.8+I79.2*,Insulin-dependent diabetes mellitus with unspecified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E10.9,Insulin-dependent diabetes mellitus without complications
+Diabetes Mellitus Type 1,E10.9+I79.2*,Insulin-dependent diabetes mellitus without complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.0,Malnutrition-related diabetes mellitus with coma
+Diabetes Mellitus Type 1,E12.1,Malnutrition-related diabetes mellitus with ketoacidosis
+Diabetes Mellitus Type 1,E12.2+I79.2*,Malnutrition-related diabetes mellitus with renal complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.2+N08.3*,"Malnutrition-related diabetes mellitus with renal complications/Insulin-dependent diabetic nephropathy, intracapillary glomerulonephrosis, Kimmelstiel-Wilson syndrome"
+Diabetes Mellitus Type 1,E12.3+H28.0*,Malnutrition-related diabetes mellitus with ophthalmic complications/ Diabetic cataract
+Diabetes Mellitus Type 1,E12.3,Malnutrition-related diabetes mellitus with ophthalmic complications/Diabetic cataract (E10-E14+ with common fourth character .3)
+Diabetes Mellitus Type 1,E12.3+H36.0*,Malnutrition-related diabetes mellitus with ophthalmic complications/ Diabetic retinopathy
+Diabetes Mellitus Type 1,E12.3+I79.2*,Malnutrition-related diabetes mellitus with ophthalmic complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.4+G59.0*,Malnutrition-relatedt diabetes mellitus with neurological complications/ Diabetic mononeuropathy
+Diabetes Mellitus Type 1,E12.4+G63.2*,Malnutrition-related diabetes mellitus with neurological complications/Diabetic polyneuropathy (E10-E14+ with common fourth character .4)
+Diabetes Mellitus Type 1,E12.4,Malnutrition-related diabetes mellitus with neurological complications
+Diabetes Mellitus Type 1,E12.4+G73.0*,Malnutrition-relateddiabetes mellitus with neurological complications/ Diabetic amyotrophy
+Diabetes Mellitus Type 1,E12.4+G99.0*,Malnutrition-relateddiabetes mellitus with neurological complications/Daibeteic autonomic neuropathy and or Diabetic autonomic polyneuropathy
+Diabetes Mellitus Type 1,E12.4+I79.2*,Malnutrition-related diabetes mellitus with neurological complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.5,Malnutrition-related diabetes mellitus with peripheral circulatory complications
+Diabetes Mellitus Type 1,E12.5+I79.2*,Malnutrition-related diabetes mellitus with peripheral circulatory complications/ Diabetic peripheral angiopathy
+Diabetes Mellitus Type 1,E12.6,Malnutrition-related diabetes mellitus with other specified complications
+Diabetes Mellitus Type 1,E12.6+I79.2*,Malnutrition-related diabetes mellitus with other specified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.6+M14.2*,Malnutrition-related  diabetes mellitus with other specified complications/Diabetic arthropathy
+Diabetes Mellitus Type 1,E12.6+M14.6*,Malnutrition-related  diabetes mellitus with other specified complications/Diabetic neuropathic arthropathyarthropathy
+Diabetes Mellitus Type 1,E12.7,Malnutrition-related diabetes mellitus with multiple complications
+Diabetes Mellitus Type 1,E12.7+I79.2*,Malnutrition-related diabetes mellitus with multiple complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.8,Malnutrition-related diabetes mellitus with unspecified complications
+Diabetes Mellitus Type 1,E12.8+I79.2*,Malnutrition-related diabetes mellitus with unspecified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E12.9,Malnutrition-related diabetes mellitus without complications
+Diabetes Mellitus Type 1,E12.9+I79.2*,Malnutrition-related diabetes mellitus without complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.2+I79.2*,Other specified diabetes mellitus with renal complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.3,Other specified diabetes mellitus with ophthalmic complications
+Diabetes Mellitus Type 1,E13.3+H28.0*,Other specified diabetes mellitus with ophthalmic complications/Diabetic cataract (E10-E14+ with common fourth character .3)
+Diabetes Mellitus Type 1,E13.3+H36.0*,Other specified diabetes mellitus with ophthalmic complications/Diabetic retinopathy (E10-E14+ with common fourth character .3)
+Diabetes Mellitus Type 1,E13.3+I79.2*,Other specified diabetes mellitus with ophthalmic complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.4,Other specified diabetes mellitus - With ophtalmic complication
+Diabetes Mellitus Type 1,E13.4+G63.2*,Other specified diabetes mellitus with neurological complications/Diabetic polyneuropathy (E10-E14+ with common fourth character .4)
+Diabetes Mellitus Type 1,E13.4+I79.2*,Other specified diabetes mellitus with neurological complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.6+I79.2*,Other specified diabetes mellitus with other specified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.7+I79.2*,Other specified diabetes mellitus with multiple complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.8+I79.2*,Other specified diabetes mellitus with unspecified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E13.9+I79.2*,Other specified diabetes mellitus without complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.2+I79.2*,Unspecified diabetes mellitus with renal complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.2+N08.3*,"Unspecified diabetes mellitus with renal complications/Unspecified diabeticnephropathy, intracapillary glomerulonephrosis, Kimmelstiel-Wilson syndrome"
+Diabetes Mellitus Type 1,E14.3,Unspecified diabetes mellitus with renal complications
+Diabetes Mellitus Type 1,E14.3+H28.0*,Unspecified diabetes mellitus - With ophtalmic complications / Diabetic cataract
+Diabetes Mellitus Type 1,E14.3+H36.0*,Unspecified diabetes mellitus with ophthalmic complications/Diabetic retinopathy (E10-E14+ with common fourth character .3)
+Diabetes Mellitus Type 1,E14.3+I79.2*,Unspecified diabetes mellitus with ophthalmic complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.4,Unspecified diabetes mellitus with ophthalmic complications
+Diabetes Mellitus Type 1,E14.4+G63.2*,Unspecified diabetes mellitus with neurological complications/Diabetic polyneuropathy (E10-E14+ with common fourth character .4)
+Diabetes Mellitus Type 1,E14.4+I79.2*,Unspecified diabetes mellitus with neurological complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.6+I79.2*,Unspecified diabetes mellitus with other specified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.7+I79.2*,Unspecified diabetes mellitus with multiple complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.8+I79.2*,Unspecified diabetes mellitus with unspecified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,E14.9+I79.2*,Unspecified diabetes mellitus without complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 1,O24.0,"Pre-existing diabetes mellitus, insulin-dependent"
+Diabetes Mellitus Type 1,O24.2,Pre-existing malnutrition-related diabetes mellitus
+Diabetes Mellitus Type 1,O24.3,"Pre-existing diabetes mellitus, unspecified"
+Diabetes Mellitus Type 1,O24.4,Diabetes mellitus arising in pregnancy
+Diabetes Mellitus Type 1,O24.9,"Diabetes mellitus in pregnancy, unspecified"
+Diabetes Mellitus Type 2,E11.0,Non-insulin-dependent diabetes mellitus with coma
+Diabetes Mellitus Type 2,E11.1,Non-insulin-dependent diabetes mellitus with ketoacidosis
+Diabetes Mellitus Type 2,E11.2+I79.2*,Non-insulin-dependent diabetes mellitus with renal complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E11.2+N08.3*,"Non-insulin-dependent diabetes mellitus with renal complications/Insulin-dependent diabetic nephropathy, intracapillary glomerulonephrosis, Kimmelstiel-Wilson syndrome"
+Diabetes Mellitus Type 2,E11.3+H28.0*,Non-insulin-dependent diabetes mellitus with ophthalmic complications/ Diabetic cataract
+Diabetes Mellitus Type 2,E11.3+H36.0*,Non-insulin-dependent diabetes mellitus with ophthalmic complications/ Diabetic retinopathy
+Diabetes Mellitus Type 2,E11.3+I79.2*,Non-insulin-dependent diabetes mellitus with ophthalmic complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E11.4+G59.0*,Non-insulin-dependent diabetes mellitus with neurological complications/ Diabetic mononeuropathy
+Diabetes Mellitus Type 2,E11.4+G63.2*,Non-insulin-dependent diabetes mellitus with neurological complications/ Diabetic polyneuropathy
+Diabetes Mellitus Type 2,E11.4+G73.0*,Non-insulin-dependent diabetes mellitus with neurological complications/ Diabetic amyotrophy
+Diabetes Mellitus Type 2,E11.4+G99.0*,Non-insulin-dependent diabetes mellitus with neurological complications/Daibeteic autonomic neuropathy and or Diabetic autonomic polyneuropathy
+Diabetes Mellitus Type 2,E11.4+I79.2*,Non-insulin-dependent diabetes mellitus with neurological complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E11.5,Non-insulin-dependent diabetes mellitus with peripheral circulatory complications
+Diabetes Mellitus Type 2,E11.5+I79.2*,Non-insulin-dependent diabetes mellitus with peripheral circulatory complications/ Diabetic peripheral angiopathy
+Diabetes Mellitus Type 2,E11.6,Non-insulin-dependent diabetes mellitus with other specified complications
+Diabetes Mellitus Type 2,E11.6+I79.2*,Non-insulin-dependent diabetes mellitus with other specified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E11.6+M14.2*,Non-insulin-dependent diabetes mellitus with other specified complications/Diabetic arthropathy
+Diabetes Mellitus Type 2,E11.6+M14.6*,Non-insulin-dependent diabetes mellitus with other specified complications/Diabetic neuropathic arthropathyarthropathy
+Diabetes Mellitus Type 2,E11.7,Non-insulin-dependent diabetes mellitus with multiple complications
+Diabetes Mellitus Type 2,E11.7+I79.2*,Non-insulin-dependent diabetes mellitus with multiple complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E11.8,Non-insulin-dependent diabetes mellitus with unspecified complications
+Diabetes Mellitus Type 2,E11.8+I79.2*,Non-insulin-dependent diabetes mellitus with unspecified complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E11.9,Non-insulin-dependent diabetes mellitus without complications
+Diabetes Mellitus Type 2,E11.9+I79.2*,Non-insulin-dependent diabetes mellitus without complications/Peripheral angiopathy in diseases classified elsewhere
+Diabetes Mellitus Type 2,E12.0,Malnutrition-related diabetes mellitus with coma
+Diabetes Mellitus Type 2,E12.1,Malnutrition-related diabetes mellitus with ketoacidosis
+Diabetes Mellitus Type 2,E12.2+N08.3*,"Malnutrition-related diabetes mellitus with renal complications/Insulin-dependent diabetic nephropathy, intracapillary glomerulonephrosis, Kimmelstiel-Wilson syndrome"
+Diabetes Mellitus Type 2,E12.3+H28.0*,Malnutrition-related diabetes mellitus with ophthalmic complications/ Diabetic cataract
+Diabetes Mellitus Type 2,E12.3+H36.0*,Malnutrition-related diabetes mellitus with ophthalmic complications/ Diabetic retinopathy
+Diabetes Mellitus Type 2,E12.4+G59.0*,Malnutrition-relatedt diabetes mellitus with neurological complications/ Diabetic mononeuropathy
+Diabetes Mellitus Type 2,E12.4+G63.2*,Malnutrition-relateddiabetes mellitus with neurological complications/ Diabetic polyneuropathy
+Diabetes Mellitus Type 2,E12.4+G73.0*,Malnutrition-relateddiabetes mellitus with neurological complications/ Diabetic amyotrophy
+Diabetes Mellitus Type 2,E12.4+G99.0*,Malnutrition-relateddiabetes mellitus with neurological complications/Daibeteic autonomic neuropathy and or Diabetic autonomic polyneuropathy
+Diabetes Mellitus Type 2,E12.5,Malnutrition-related diabetes mellitus with peripheral circulatory complications
+Diabetes Mellitus Type 2,E12.5+I79.2*,Malnutrition-related diabetes mellitus with peripheral circulatory complications/ Diabetic peripheral angiopathy
+Diabetes Mellitus Type 2,E12.6,Malnutrition-related diabetes mellitus with other specified complications
+Diabetes Mellitus Type 2,E12.6+M14.2*,Malnutrition-related  diabetes mellitus with other specified complications/Diabetic arthropathy
+Diabetes Mellitus Type 2,E12.6+M14.6*,Malnutrition-related  diabetes mellitus with other specified complications/Diabetic neuropathic arthropathyarthropathy
+Diabetes Mellitus Type 2,E12.7,Malnutrition-related diabetes mellitus with multiple complications
+Diabetes Mellitus Type 2,E12.8,Malnutrition-related diabetes mellitus with unspecified complications
+Diabetes Mellitus Type 2,E12.9,Malnutrition-related diabetes mellitus without complications
+Diabetes Mellitus Type 2,O24.1,"Pre-existing diabetes mellitus, non-insulin-dependent"
+Diabetes Mellitus Type 2,O24.2,Pre-existing malnutrition-related diabetes mellitus
+Diabetes Mellitus Type 2,O24.3,"Pre-existing diabetes mellitus, unspecified"
