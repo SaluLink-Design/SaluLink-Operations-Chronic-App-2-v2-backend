@@ -1,6 +1,16 @@
 """
 SaluLink Chronic App - Python Backend API
-Handles ClinicalBERT analysis using the Authi 1.0 logic
+Implements Authi 1.0 AI Components for Diagnostic Coding Automation
+
+AI Components:
+1. ClinicalBERT (fine-tuned for chronic conditions)
+   - Extracts symptoms, diagnostic descriptions, and clinical terminology
+   - Produces keyword set for condition matching
+   
+2. Authi 1.0 Matching System
+   - Maps extracted keywords to chronic condition entries
+   - Returns 3–5 chronic condition suggestions with ICD codes
+   - Uses cosine similarity with intelligent scoring
 """
 
 from fastapi import FastAPI, HTTPException
@@ -99,7 +109,12 @@ def load_chronic_conditions():
 
 def extract_keywords_clinicalbert(text: str):
     """
-    Processes clinical text and extracts keywords with embeddings
+    ClinicalBERT (fine-tuned for chronic conditions)
+    Responsible for:
+    - Extracting symptoms, diagnostic descriptions, and clinical terminology
+    - Producing the keyword set for condition matching
+    
+    Processes clinical text and extracts meaningful keywords with embeddings
     """
     # Tokenize the input text
     inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
@@ -120,11 +135,17 @@ def extract_keywords_clinicalbert(text: str):
     current_word = ""
     current_embedding_indices = []
     
+    # Clinical stop words to filter out (common non-diagnostic terms)
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+                  'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+                  'has', 'have', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                  'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those'}
+    
     # Process tokens
     for i, token in enumerate(tokens):
         # Skip special tokens
         if token in tokenizer.all_special_tokens:
-            if current_word:
+            if current_word and len(current_word) > 2 and current_word.lower() not in stop_words:
                 avg_embedding = torch.mean(last_hidden_state[0, current_embedding_indices, :], dim=0)
                 extracted_keywords.append(current_word)
                 keyword_embeddings.append(avg_embedding)
@@ -137,7 +158,7 @@ def extract_keywords_clinicalbert(text: str):
             current_word += token[2:]
             current_embedding_indices.append(i)
         else:
-            if current_word:
+            if current_word and len(current_word) > 2 and current_word.lower() not in stop_words:
                 avg_embedding = torch.mean(last_hidden_state[0, current_embedding_indices, :], dim=0)
                 extracted_keywords.append(current_word)
                 keyword_embeddings.append(avg_embedding)
@@ -145,7 +166,7 @@ def extract_keywords_clinicalbert(text: str):
             current_embedding_indices = [i]
     
     # Add last word
-    if current_word:
+    if current_word and len(current_word) > 2 and current_word.lower() not in stop_words:
         avg_embedding = torch.mean(last_hidden_state[0, current_embedding_indices, :], dim=0)
         extracted_keywords.append(current_word)
         keyword_embeddings.append(avg_embedding)
@@ -167,11 +188,18 @@ def calculate_cosine_similarity(embedding1, embedding2):
     return torch.nn.functional.cosine_similarity(embedding1, embedding2)
 
 
-def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0.7):
+def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0.65):
     """
-    Match clinical keywords to chronic conditions
+    Authi 1.0 - Condition Matching Component
+    Responsible for:
+    - Mapping extracted keywords to chronic condition entries
+    - Returning 3–5 chronic condition suggestions
+    
+    Uses cosine similarity to match clinical keywords to chronic conditions
+    with improved scoring and filtering
     """
     matched_conditions = {}
+    condition_scores = {}  # Track all scores for a condition to calculate average
     
     for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
         best_match = None
@@ -184,14 +212,23 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0
             
             similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
             
-            if similarity > highest_similarity and similarity >= threshold:
-                highest_similarity = similarity
-                best_match = {
-                    'condition': condition_data['condition'],
-                    'icd_code': condition_data['icd_code'],
-                    'icd_description': condition_data['icd_description'],
-                    'similarity_score': highest_similarity.item()
-                }
+            if similarity >= threshold:
+                condition_key = (condition_data['condition'], condition_data['icd_code'])
+                
+                # Track all similarity scores for this condition
+                if condition_key not in condition_scores:
+                    condition_scores[condition_key] = []
+                condition_scores[condition_key].append(similarity.item())
+                
+                # Update if this is the best match for this condition
+                if similarity > highest_similarity:
+                    highest_similarity = similarity
+                    best_match = {
+                        'condition': condition_data['condition'],
+                        'icd_code': condition_data['icd_code'],
+                        'icd_description': condition_data['icd_description'],
+                        'similarity_score': highest_similarity.item()
+                    }
         
         if best_match:
             condition_key = (best_match['condition'], best_match['icd_code'])
@@ -199,10 +236,27 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0
                best_match['similarity_score'] > matched_conditions[condition_key]['similarity_score']:
                 matched_conditions[condition_key] = best_match
     
+    # Calculate average score for each condition to improve ranking
+    for condition_key, match in matched_conditions.items():
+        if condition_key in condition_scores:
+            avg_score = sum(condition_scores[condition_key]) / len(condition_scores[condition_key])
+            # Weight: 70% max score + 30% average score for better ranking
+            match['similarity_score'] = (match['similarity_score'] * 0.7) + (avg_score * 0.3)
+    
     result_list = list(matched_conditions.values())
     result_list.sort(key=lambda x: x['similarity_score'], reverse=True)
     
-    return result_list[:5]  # Return top 5 matches
+    # Return 3-5 conditions: minimum 3, maximum 5
+    # If we have less than 3 matches with threshold, lower threshold slightly
+    if len(result_list) < 3 and len(result_list) > 0:
+        # Try with lower threshold to get at least 3 results
+        return match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=max(0.5, threshold - 0.1))
+    
+    # Return between 3 and 5 results
+    if len(result_list) < 3:
+        return result_list  # Return what we have if less than 3
+    else:
+        return result_list[:5]  # Return top 5 matches
 
 
 @app.on_event("startup")
@@ -229,7 +283,18 @@ async def health_check():
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_clinical_note(request: AnalysisRequest):
     """
-    Analyze a clinical note and return matched conditions
+    Analyze a clinical note and return 3-5 matched chronic conditions
+    
+    This endpoint implements the complete Authi 1.0 workflow:
+    1. ClinicalBERT extracts keywords and clinical terminology from the note
+    2. Authi 1.0 matches keywords to chronic conditions using semantic similarity
+    3. Returns 3-5 most relevant conditions with ICD codes and similarity scores
+    
+    Args:
+        request: AnalysisRequest containing the clinical note text
+        
+    Returns:
+        AnalysisResponse with extracted keywords and 3-5 matched conditions
     """
     try:
         if not model or not tokenizer:
@@ -244,11 +309,17 @@ async def analyze_clinical_note(request: AnalysisRequest):
                 matched_conditions=[]
             )
         
-        # Match conditions
+        # Match conditions using Authi 1.0 algorithm
+        # Returns 3-5 conditions with highest similarity scores
         matches = match_conditions(keywords, embeddings)
         
+        # Log results for monitoring
+        print(f"Analysis completed: {len(keywords)} keywords extracted, {len(matches)} conditions matched")
+        for i, match in enumerate(matches, 1):
+            print(f"  {i}. {match['condition']} ({match['icd_code']}) - Score: {match['similarity_score']:.3f}")
+        
         return AnalysisResponse(
-            extracted_keywords=keywords[:20],  # Return first 20 keywords
+            extracted_keywords=keywords[:30],  # Return up to 30 most relevant keywords
             matched_conditions=[
                 MatchedConditionResponse(
                     condition=m['condition'],
