@@ -188,19 +188,100 @@ def calculate_cosine_similarity(embedding1, embedding2):
     return torch.nn.functional.cosine_similarity(embedding1, embedding2)
 
 
-def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0.65):
+def find_direct_condition_matches(clinical_text):
+    """
+    Direct condition name matching - checks if condition names appear in clinical text
+    This ensures we catch conditions that are explicitly mentioned
+    
+    Uses multiple matching strategies:
+    1. Exact condition name match
+    2. Partial word matching for multi-word conditions
+    3. ICD description keyword matching
+    """
+    import re
+    
+    clinical_text_lower = clinical_text.lower()
+    direct_matches = {}
+    
+    # Get unique condition names
+    condition_names = set()
+    for entry in chronic_condition_embeddings:
+        condition_names.add(entry['condition'].lower())
+    
+    # Strategy 1: Direct condition name matching
+    for condition_name in condition_names:
+        # Create word boundary regex pattern for accurate matching
+        # This ensures we match whole words, not just substrings
+        pattern = r'\b' + re.escape(condition_name) + r'\b'
+        if re.search(pattern, clinical_text_lower):
+            # Find all matching entries for this condition
+            for entry in chronic_condition_embeddings:
+                if entry['condition'].lower() == condition_name:
+                    condition_key = (entry['condition'], entry['icd_code'])
+                    if condition_key not in direct_matches:
+                        direct_matches[condition_key] = {
+                            'condition': entry['condition'],
+                            'icd_code': entry['icd_code'],
+                            'icd_description': entry['icd_description'],
+                            'similarity_score': 0.95,  # High score for direct matches
+                            'match_type': 'direct'
+                        }
+    
+    # Strategy 2: Check for key medical terms from ICD descriptions
+    # This helps catch conditions mentioned by their medical names
+    for entry in chronic_condition_embeddings:
+        icd_desc_lower = entry['icd_description'].lower()
+        
+        # Extract significant medical terms (3+ chars, excluding common words)
+        medical_terms = [word for word in re.findall(r'\b[a-z]{3,}\b', icd_desc_lower) 
+                        if word not in {'with', 'without', 'and', 'the', 'disease', 'syndrome', 
+                                       'other', 'unspecified', 'disorder', 'complicating', 
+                                       'specified', 'due', 'mellitus', 'type', 'related'}]
+        
+        # Check if any significant medical term appears in the clinical text
+        for term in medical_terms[:5]:  # Check up to 5 most significant terms
+            if len(term) >= 8:  # Only check longer, more specific medical terms
+                pattern = r'\b' + re.escape(term) + r'\b'
+                if re.search(pattern, clinical_text_lower):
+                    condition_key = (entry['condition'], entry['icd_code'])
+                    if condition_key not in direct_matches:
+                        # Lower score for ICD description matches
+                        direct_matches[condition_key] = {
+                            'condition': entry['condition'],
+                            'icd_code': entry['icd_code'],
+                            'icd_description': entry['icd_description'],
+                            'similarity_score': 0.85,
+                            'match_type': 'keyword'
+                        }
+                    break  # Only match once per entry
+    
+    return list(direct_matches.values())
+
+
+def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text="", threshold=0.65):
     """
     Authi 1.0 - Condition Matching Component
     Responsible for:
     - Mapping extracted keywords to chronic condition entries
     - Returning 3–5 chronic condition suggestions
     
-    Uses cosine similarity to match clinical keywords to chronic conditions
-    with improved scoring and filtering
+    Uses both direct condition name matching and cosine similarity
+    for improved accuracy
     """
+    # First, check for direct condition name matches
+    direct_matches = find_direct_condition_matches(clinical_text) if clinical_text else []
+    
     matched_conditions = {}
     condition_scores = {}  # Track all scores for a condition to calculate average
     
+    # Add direct matches with high priority
+    for match in direct_matches:
+        condition_key = (match['condition'], match['icd_code'])
+        matched_conditions[condition_key] = match
+        match_type_label = "Direct" if match['match_type'] == 'direct' else "Keyword"
+        print(f"   {match_type_label} match found: {match['condition']}")
+    
+    # Then use embedding-based matching
     for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
         best_match = None
         highest_similarity = -1.0
@@ -227,18 +308,26 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0
                         'condition': condition_data['condition'],
                         'icd_code': condition_data['icd_code'],
                         'icd_description': condition_data['icd_description'],
-                        'similarity_score': highest_similarity.item()
+                        'similarity_score': highest_similarity.item(),
+                        'match_type': 'semantic'
                     }
         
         if best_match:
             condition_key = (best_match['condition'], best_match['icd_code'])
-            if condition_key not in matched_conditions or \
-               best_match['similarity_score'] > matched_conditions[condition_key]['similarity_score']:
+            # Don't override direct matches, but can override keyword matches if semantic score is higher
+            existing_match = matched_conditions.get(condition_key)
+            if not existing_match:
+                matched_conditions[condition_key] = best_match
+            elif existing_match.get('match_type') == 'keyword' and best_match['similarity_score'] > 0.75:
+                # Semantic match with high confidence can override keyword match
+                matched_conditions[condition_key] = best_match
+            elif existing_match.get('match_type') == 'semantic' and best_match['similarity_score'] > existing_match['similarity_score']:
+                # Better semantic match
                 matched_conditions[condition_key] = best_match
     
     # Calculate average score for each condition to improve ranking
     for condition_key, match in matched_conditions.items():
-        if condition_key in condition_scores:
+        if match.get('match_type') == 'semantic' and condition_key in condition_scores:
             avg_score = sum(condition_scores[condition_key]) / len(condition_scores[condition_key])
             # Weight: 70% max score + 30% average score for better ranking
             match['similarity_score'] = (match['similarity_score'] * 0.7) + (avg_score * 0.3)
@@ -250,7 +339,7 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=0
     # If we have less than 3 matches with threshold, lower threshold slightly
     if len(result_list) < 3 and len(result_list) > 0:
         # Try with lower threshold to get at least 3 results
-        return match_conditions(clinical_keywords, clinical_keyword_embeddings, threshold=max(0.5, threshold - 0.1))
+        return match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text, threshold=max(0.5, threshold - 0.1))
     
     # Return between 3 and 5 results
     if len(result_list) < 3:
@@ -311,7 +400,7 @@ async def analyze_clinical_note(request: AnalysisRequest):
         
         # Match conditions using Authi 1.0 algorithm
         # Returns 3-5 conditions with highest similarity scores
-        matches = match_conditions(keywords, embeddings)
+        matches = match_conditions(keywords, embeddings, request.clinical_note)
         
         # Log results for monitoring
         print(f"Analysis completed: {len(keywords)} keywords extracted, {len(matches)} conditions matched")
