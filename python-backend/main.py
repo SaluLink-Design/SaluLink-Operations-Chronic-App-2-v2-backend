@@ -263,23 +263,27 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
     Authi 1.0 - Condition Matching Component
     Responsible for:
     - Mapping extracted keywords to chronic condition entries
-    - Returning 3–5 chronic condition suggestions
+    - Returning 3–5 UNIQUE chronic condition suggestions
     
     Uses both direct condition name matching and cosine similarity
-    for improved accuracy
+    for improved accuracy. Deduplicates by condition name to ensure
+    diverse condition recommendations.
     """
     # First, check for direct condition name matches
     direct_matches = find_direct_condition_matches(clinical_text) if clinical_text else []
     
+    # Use condition NAME only as key to avoid duplicate conditions with different ICD codes
     matched_conditions = {}
     condition_scores = {}  # Track all scores for a condition to calculate average
     
     # Add direct matches with high priority
     for match in direct_matches:
-        condition_key = (match['condition'], match['icd_code'])
-        matched_conditions[condition_key] = match
-        match_type_label = "Direct" if match['match_type'] == 'direct' else "Keyword"
-        print(f"   {match_type_label} match found: {match['condition']}")
+        condition_name = match['condition']
+        # Only keep the highest scoring ICD code for each condition
+        if condition_name not in matched_conditions or match['similarity_score'] > matched_conditions[condition_name]['similarity_score']:
+            matched_conditions[condition_name] = match
+            match_type_label = "Direct" if match['match_type'] == 'direct' else "Keyword"
+            print(f"   {match_type_label} match found: {match['condition']}")
     
     # Then use embedding-based matching
     for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
@@ -294,14 +298,14 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
             similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
             
             if similarity >= threshold:
-                condition_key = (condition_data['condition'], condition_data['icd_code'])
+                condition_name = condition_data['condition']
                 
-                # Track all similarity scores for this condition
-                if condition_key not in condition_scores:
-                    condition_scores[condition_key] = []
-                condition_scores[condition_key].append(similarity.item())
+                # Track all similarity scores for this condition NAME (not ICD code)
+                if condition_name not in condition_scores:
+                    condition_scores[condition_name] = []
+                condition_scores[condition_name].append(similarity.item())
                 
-                # Update if this is the best match for this condition
+                # Update if this is the best match for this keyword
                 if similarity > highest_similarity:
                     highest_similarity = similarity
                     best_match = {
@@ -313,39 +317,40 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
                     }
         
         if best_match:
-            condition_key = (best_match['condition'], best_match['icd_code'])
-            # Don't override direct matches, but can override keyword matches if semantic score is higher
-            existing_match = matched_conditions.get(condition_key)
+            condition_name = best_match['condition']
+            existing_match = matched_conditions.get(condition_name)
+            
+            # Keep the highest scoring ICD code for each condition
             if not existing_match:
-                matched_conditions[condition_key] = best_match
+                matched_conditions[condition_name] = best_match
             elif existing_match.get('match_type') == 'keyword' and best_match['similarity_score'] > 0.75:
                 # Semantic match with high confidence can override keyword match
-                matched_conditions[condition_key] = best_match
+                matched_conditions[condition_name] = best_match
             elif existing_match.get('match_type') == 'semantic' and best_match['similarity_score'] > existing_match['similarity_score']:
                 # Better semantic match
-                matched_conditions[condition_key] = best_match
+                matched_conditions[condition_name] = best_match
     
     # Calculate average score for each condition to improve ranking
-    for condition_key, match in matched_conditions.items():
-        if match.get('match_type') == 'semantic' and condition_key in condition_scores:
-            avg_score = sum(condition_scores[condition_key]) / len(condition_scores[condition_key])
+    for condition_name, match in matched_conditions.items():
+        if match.get('match_type') == 'semantic' and condition_name in condition_scores:
+            avg_score = sum(condition_scores[condition_name]) / len(condition_scores[condition_name])
             # Weight: 70% max score + 30% average score for better ranking
             match['similarity_score'] = (match['similarity_score'] * 0.7) + (avg_score * 0.3)
     
     result_list = list(matched_conditions.values())
     result_list.sort(key=lambda x: x['similarity_score'], reverse=True)
     
-    # Return 3-5 conditions: minimum 3, maximum 5
+    # Return 3-5 UNIQUE conditions: minimum 3, maximum 5
     # If we have less than 3 matches with threshold, lower threshold slightly
     if len(result_list) < 3 and len(result_list) > 0:
         # Try with lower threshold to get at least 3 results
         return match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text, threshold=max(0.5, threshold - 0.1))
     
-    # Return between 3 and 5 results
+    # Return between 3 and 5 unique results
     if len(result_list) < 3:
         return result_list  # Return what we have if less than 3
     else:
-        return result_list[:5]  # Return top 5 matches
+        return result_list[:5]  # Return top 5 unique conditions
 
 
 @app.on_event("startup")
