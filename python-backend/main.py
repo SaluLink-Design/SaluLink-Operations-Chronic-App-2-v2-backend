@@ -49,11 +49,13 @@ class MatchedConditionResponse(BaseModel):
     icd_code: str
     icd_description: str
     similarity_score: float
+    is_confirmed: bool = False  # True if condition is explicitly mentioned in the note
 
 
 class AnalysisResponse(BaseModel):
     extracted_keywords: List[str]
     matched_conditions: List[MatchedConditionResponse]
+    confirmed_count: int = 0  # Number of conditions directly mentioned in note
 
 
 def load_model():
@@ -191,12 +193,14 @@ def calculate_cosine_similarity(embedding1, embedding2):
 def find_direct_condition_matches(clinical_text):
     """
     Direct condition name matching - checks if condition names appear in clinical text
-    This ensures we catch conditions that are explicitly mentioned
+    This ensures we catch conditions that are explicitly mentioned (CONFIRMED conditions)
     
     Uses multiple matching strategies:
-    1. Exact condition name match
-    2. Partial word matching for multi-word conditions
-    3. ICD description keyword matching
+    1. Exact condition name match (highest confidence - CONFIRMED)
+    2. Common medical term aliases (e.g., "diabetic" -> Diabetes, "hypertensive" -> Hypertension)
+    3. ICD description keyword matching (for specific subtypes)
+    
+    Returns conditions with is_confirmed=True for explicit mentions
     """
     import re
     
@@ -208,10 +212,22 @@ def find_direct_condition_matches(clinical_text):
     for entry in chronic_condition_embeddings:
         condition_names.add(entry['condition'].lower())
     
-    # Strategy 1: Direct condition name matching
+    # Define condition aliases for common medical variations
+    condition_aliases = {
+        'diabetes mellitus type 1': ['type 1 diabetes', 'type i diabetes', 't1dm', 'type1 diabetes', 'insulin-dependent diabetes', 'insulin dependent diabetes', 'iddm'],
+        'diabetes mellitus type 2': ['type 2 diabetes', 'type ii diabetes', 't2dm', 'type2 diabetes', 'non-insulin-dependent diabetes', 'non insulin dependent diabetes', 'niddm', 'adult-onset diabetes'],
+        'hypertension': ['high blood pressure', 'elevated blood pressure', 'hypertensive', 'htn', 'bp elevated', 'raised blood pressure'],
+        'asthma': ['asthmatic', 'bronchial asthma'],
+        'cardiac failure': ['heart failure', 'congestive heart failure', 'chf', 'left ventricular failure', 'right heart failure', 'cardiac decompensation'],
+        'chronic renal disease': ['chronic kidney disease', 'ckd', 'renal failure', 'kidney failure', 'nephropathy', 'renal insufficiency', 'kidney disease'],
+        'cardiomyopathy': ['cardiomyopathic', 'dilated cardiomyopathy', 'hypertrophic cardiomyopathy', 'restrictive cardiomyopathy'],
+        'hyperlipidaemia': ['hyperlipidemia', 'high cholesterol', 'dyslipidemia', 'dyslipidaemia', 'elevated cholesterol', 'hypercholesterolemia', 'hypercholesterolaemia'],
+        'haemophilia': ['hemophilia', 'factor viii deficiency', 'factor ix deficiency', 'bleeding disorder']
+    }
+    
+    # Strategy 1: Direct condition name matching (CONFIRMED)
     for condition_name in condition_names:
         # Create word boundary regex pattern for accurate matching
-        # This ensures we match whole words, not just substrings
         pattern = r'\b' + re.escape(condition_name) + r'\b'
         if re.search(pattern, clinical_text_lower):
             # Find all matching entries for this condition
@@ -223,37 +239,64 @@ def find_direct_condition_matches(clinical_text):
                             'condition': entry['condition'],
                             'icd_code': entry['icd_code'],
                             'icd_description': entry['icd_description'],
-                            'similarity_score': 0.95,  # High score for direct matches
-                            'match_type': 'direct'
+                            'similarity_score': 0.98,  # High score for direct matches
+                            'match_type': 'confirmed',
+                            'is_confirmed': True  # CONFIRMED - explicitly mentioned
                         }
     
-    # Strategy 2: Check for key medical terms from ICD descriptions
-    # This helps catch conditions mentioned by their medical names
+    # Strategy 2: Check for condition aliases (also CONFIRMED)
+    for canonical_condition, aliases in condition_aliases.items():
+        for alias in aliases:
+            pattern = r'\b' + re.escape(alias) + r'\b'
+            if re.search(pattern, clinical_text_lower):
+                # Find the canonical condition in our database
+                for entry in chronic_condition_embeddings:
+                    if entry['condition'].lower() == canonical_condition:
+                        condition_key = (entry['condition'], entry['icd_code'])
+                        if condition_key not in direct_matches:
+                            direct_matches[condition_key] = {
+                                'condition': entry['condition'],
+                                'icd_code': entry['icd_code'],
+                                'icd_description': entry['icd_description'],
+                                'similarity_score': 0.95,  # High score for alias matches
+                                'match_type': 'confirmed',
+                                'is_confirmed': True  # CONFIRMED - alias explicitly mentioned
+                            }
+                break  # Stop checking aliases once found
+    
+    # Strategy 3: Check for specific ICD description terms (for subtypes of confirmed conditions)
+    # Only use this to find specific ICD codes for already-confirmed conditions
+    confirmed_condition_names = set(match['condition'] for match in direct_matches.values())
+    
     for entry in chronic_condition_embeddings:
+        # Only check ICD descriptions for conditions we've already confirmed
+        if entry['condition'] not in confirmed_condition_names:
+            continue
+            
         icd_desc_lower = entry['icd_description'].lower()
         
-        # Extract significant medical terms (3+ chars, excluding common words)
+        # Extract significant medical terms
         medical_terms = [word for word in re.findall(r'\b[a-z]{3,}\b', icd_desc_lower) 
                         if word not in {'with', 'without', 'and', 'the', 'disease', 'syndrome', 
                                        'other', 'unspecified', 'disorder', 'complicating', 
                                        'specified', 'due', 'mellitus', 'type', 'related'}]
         
         # Check if any significant medical term appears in the clinical text
-        for term in medical_terms[:5]:  # Check up to 5 most significant terms
-            if len(term) >= 8:  # Only check longer, more specific medical terms
+        for term in medical_terms[:5]:
+            if len(term) >= 6:  # Check specific medical terms
                 pattern = r'\b' + re.escape(term) + r'\b'
                 if re.search(pattern, clinical_text_lower):
                     condition_key = (entry['condition'], entry['icd_code'])
                     if condition_key not in direct_matches:
-                        # Lower score for ICD description matches
                         direct_matches[condition_key] = {
                             'condition': entry['condition'],
                             'icd_code': entry['icd_code'],
                             'icd_description': entry['icd_description'],
-                            'similarity_score': 0.85,
-                            'match_type': 'keyword'
+                            'similarity_score': 0.90,
+                            'match_type': 'confirmed',
+                            'is_confirmed': True  # Still confirmed - specific subtype
                         }
-                    break  # Only match once per entry
+                    break
     
     return list(direct_matches.values())
 
@@ -261,96 +304,164 @@ def find_direct_condition_matches(clinical_text):
 def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text="", threshold=0.65):
     """
     Authi 1.0 - Condition Matching Component
+    
+    NEW LOGIC:
+    - If conditions are explicitly mentioned in the note (CONFIRMED), prioritize those
+    - Only suggest additional conditions if they are RELATED to confirmed conditions
+    - If no confirmed conditions found, use semantic matching to suggest possible conditions
+    - Returns 3-5 conditions with is_confirmed flag indicating explicit mention
+    
     Responsible for:
     - Mapping extracted keywords to chronic condition entries
     - Returning 3–5 UNIQUE chronic condition suggestions
-    
-    Uses both direct condition name matching and cosine similarity
-    for improved accuracy. Deduplicates by condition name to ensure
-    diverse condition recommendations.
+    - Marking confirmed vs suggested conditions
     """
-    # First, check for direct condition name matches
+    # First, check for direct condition name matches (CONFIRMED conditions)
     direct_matches = find_direct_condition_matches(clinical_text) if clinical_text else []
     
     # Use condition NAME only as key to avoid duplicate conditions with different ICD codes
-    matched_conditions = {}
-    condition_scores = {}  # Track all scores for a condition to calculate average
+    confirmed_conditions = {}
+    suggested_conditions = {}
+    condition_scores = {}
     
-    # Add direct matches with high priority
+    # Add confirmed matches (explicitly mentioned in note)
     for match in direct_matches:
         condition_name = match['condition']
-        # Only keep the highest scoring ICD code for each condition
-        if condition_name not in matched_conditions or match['similarity_score'] > matched_conditions[condition_name]['similarity_score']:
-            matched_conditions[condition_name] = match
-            match_type_label = "Direct" if match['match_type'] == 'direct' else "Keyword"
-            print(f"   {match_type_label} match found: {match['condition']}")
+        if condition_name not in confirmed_conditions or match['similarity_score'] > confirmed_conditions[condition_name]['similarity_score']:
+            confirmed_conditions[condition_name] = match
+            print(f"   ✓ CONFIRMED condition found: {match['condition']}")
     
-    # Then use embedding-based matching
-    for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
-        best_match = None
-        highest_similarity = -1.0
-        
-        for condition_data in chronic_condition_embeddings:
-            condition_embedding = condition_data['embedding']
-            if condition_embedding is None:
-                continue
-            
-            similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
-            
-            if similarity >= threshold:
-                condition_name = condition_data['condition']
-                
-                # Track all similarity scores for this condition NAME (not ICD code)
-                if condition_name not in condition_scores:
-                    condition_scores[condition_name] = []
-                condition_scores[condition_name].append(similarity.item())
-                
-                # Update if this is the best match for this keyword
-                if similarity > highest_similarity:
-                    highest_similarity = similarity
-                    best_match = {
-                        'condition': condition_data['condition'],
-                        'icd_code': condition_data['icd_code'],
-                        'icd_description': condition_data['icd_description'],
-                        'similarity_score': highest_similarity.item(),
-                        'match_type': 'semantic'
-                    }
-        
-        if best_match:
-            condition_name = best_match['condition']
-            existing_match = matched_conditions.get(condition_name)
-            
-            # Keep the highest scoring ICD code for each condition
-            if not existing_match:
-                matched_conditions[condition_name] = best_match
-            elif existing_match.get('match_type') == 'keyword' and best_match['similarity_score'] > 0.75:
-                # Semantic match with high confidence can override keyword match
-                matched_conditions[condition_name] = best_match
-            elif existing_match.get('match_type') == 'semantic' and best_match['similarity_score'] > existing_match['similarity_score']:
-                # Better semantic match
-                matched_conditions[condition_name] = best_match
+    # Get the count of unique confirmed conditions
+    confirmed_count = len(confirmed_conditions)
     
-    # Calculate average score for each condition to improve ranking
-    for condition_name, match in matched_conditions.items():
-        if match.get('match_type') == 'semantic' and condition_name in condition_scores:
+    # If we have confirmed conditions, we should primarily return those
+    # Only use semantic matching to potentially find related/comorbid conditions
+    if confirmed_count > 0:
+        print(f"   Found {confirmed_count} confirmed condition(s). Limiting semantic suggestions.")
+        
+        # Define related condition pairs (comorbidities often found together)
+        related_conditions = {
+            'Hypertension': ['Cardiac Failure', 'Chronic Renal Disease', 'Cardiomyopathy', 'Diabetes Mellitus Type 2'],
+            'Diabetes Mellitus Type 1': ['Chronic Renal Disease', 'Hypertension', 'Hyperlipidaemia'],
+            'Diabetes Mellitus Type 2': ['Hypertension', 'Hyperlipidaemia', 'Chronic Renal Disease', 'Cardiac Failure'],
+            'Cardiac Failure': ['Hypertension', 'Cardiomyopathy', 'Chronic Renal Disease'],
+            'Cardiomyopathy': ['Cardiac Failure', 'Hypertension'],
+            'Chronic Renal Disease': ['Hypertension', 'Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2', 'Cardiac Failure'],
+            'Hyperlipidaemia': ['Hypertension', 'Diabetes Mellitus Type 2'],
+            'Asthma': [],  # Asthma typically stands alone
+            'Haemophilia': []  # Haemophilia typically stands alone
+        }
+        
+        # Get related conditions for the confirmed ones
+        allowed_suggestions = set()
+        for confirmed_name in confirmed_conditions.keys():
+            if confirmed_name in related_conditions:
+                allowed_suggestions.update(related_conditions[confirmed_name])
+        
+        # Remove already confirmed conditions from suggestions
+        allowed_suggestions -= set(confirmed_conditions.keys())
+        
+        # Only look for semantic matches that are related to confirmed conditions
+        # AND only if we need more conditions to reach 3-5
+        if confirmed_count < 5 and len(allowed_suggestions) > 0:
+            for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
+                for condition_data in chronic_condition_embeddings:
+                    # Only consider related conditions
+                    if condition_data['condition'] not in allowed_suggestions:
+                        continue
+                    
+                    condition_embedding = condition_data['embedding']
+                    if condition_embedding is None:
+                        continue
+                    
+                    similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
+                    
+                    # Higher threshold for suggested conditions when we have confirmed ones
+                    if similarity >= 0.75:  # Stricter threshold
+                        condition_name = condition_data['condition']
+                        
+                        if condition_name not in condition_scores:
+                            condition_scores[condition_name] = []
+                        condition_scores[condition_name].append(similarity.item())
+                        
+                        if condition_name not in suggested_conditions or similarity.item() > suggested_conditions[condition_name]['similarity_score']:
+                            suggested_conditions[condition_name] = {
+                                'condition': condition_data['condition'],
+                                'icd_code': condition_data['icd_code'],
+                                'icd_description': condition_data['icd_description'],
+                                'similarity_score': similarity.item(),
+                                'match_type': 'suggested',
+                                'is_confirmed': False
+                            }
+    else:
+        # No confirmed conditions - use semantic matching to suggest possible conditions
+        print(f"   No confirmed conditions found. Using semantic analysis to suggest conditions.")
+        
+        for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
+            best_match = None
+            highest_similarity = -1.0
+            
+            for condition_data in chronic_condition_embeddings:
+                condition_embedding = condition_data['embedding']
+                if condition_embedding is None:
+                    continue
+                
+                similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
+                
+                if similarity >= threshold:
+                    condition_name = condition_data['condition']
+                    
+                    if condition_name not in condition_scores:
+                        condition_scores[condition_name] = []
+                    condition_scores[condition_name].append(similarity.item())
+                    
+                    if similarity > highest_similarity:
+                        highest_similarity = similarity
+                        best_match = {
+                            'condition': condition_data['condition'],
+                            'icd_code': condition_data['icd_code'],
+                            'icd_description': condition_data['icd_description'],
+                            'similarity_score': highest_similarity.item(),
+                            'match_type': 'suggested',
+                            'is_confirmed': False
+                        }
+            
+            if best_match:
+                condition_name = best_match['condition']
+                if condition_name not in suggested_conditions or best_match['similarity_score'] > suggested_conditions[condition_name]['similarity_score']:
+                    suggested_conditions[condition_name] = best_match
+    
+    # Calculate average score for suggested conditions to improve ranking
+    for condition_name, match in suggested_conditions.items():
+        if condition_name in condition_scores:
             avg_score = sum(condition_scores[condition_name]) / len(condition_scores[condition_name])
-            # Weight: 70% max score + 30% average score for better ranking
             match['similarity_score'] = (match['similarity_score'] * 0.7) + (avg_score * 0.3)
     
-    result_list = list(matched_conditions.values())
+    # Build result list: confirmed conditions first, then suggestions
+    result_list = list(confirmed_conditions.values())
+    
+    # Sort suggestions by score and add them after confirmed conditions
+    sorted_suggestions = sorted(suggested_conditions.values(), key=lambda x: x['similarity_score'], reverse=True)
+    
+    # Add suggestions only if we have room (max 5 total) and they're strong matches
+    remaining_slots = 5 - len(result_list)
+    if remaining_slots > 0:
+        for suggestion in sorted_suggestions[:remaining_slots]:
+            # Only add suggestions with reasonably high scores
+            if suggestion['similarity_score'] >= 0.70:
+                result_list.append(suggestion)
+                print(f"   → Suggested related condition: {suggestion['condition']} (score: {suggestion['similarity_score']:.3f})")
+    
+    # Sort final result by score
     result_list.sort(key=lambda x: x['similarity_score'], reverse=True)
     
-    # Return 3-5 UNIQUE conditions: minimum 3, maximum 5
-    # If we have less than 3 matches with threshold, lower threshold slightly
-    if len(result_list) < 3 and len(result_list) > 0:
-        # Try with lower threshold to get at least 3 results
-        return match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text, threshold=max(0.5, threshold - 0.1))
+    # Return 3-5 conditions
+    # If we have confirmed conditions, we return what we have (even if less than 3)
+    # If no confirmed conditions and less than 3 suggestions, try with lower threshold
+    if confirmed_count == 0 and len(result_list) < 3 and len(result_list) > 0 and threshold > 0.5:
+        return match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text, threshold=threshold - 0.1)
     
-    # Return between 3 and 5 unique results
-    if len(result_list) < 3:
-        return result_list  # Return what we have if less than 3
-    else:
-        return result_list[:5]  # Return top 5 unique conditions
+    return result_list[:5]
 
 
 @app.on_event("startup")
@@ -381,14 +492,16 @@ async def analyze_clinical_note(request: AnalysisRequest):
     
     This endpoint implements the complete Authi 1.0 workflow:
     1. ClinicalBERT extracts keywords and clinical terminology from the note
-    2. Authi 1.0 matches keywords to chronic conditions using semantic similarity
-    3. Returns 3-5 most relevant conditions with ICD codes and similarity scores
+    2. Authi 1.0 matches keywords to chronic conditions
+    3. CONFIRMED conditions (explicitly mentioned) are prioritized
+    4. Only related conditions are suggested when confirmed conditions exist
+    5. Returns 3-5 conditions with is_confirmed flag and similarity scores
     
     Args:
         request: AnalysisRequest containing the clinical note text
         
     Returns:
-        AnalysisResponse with extracted keywords and 3-5 matched conditions
+        AnalysisResponse with extracted keywords, matched conditions, and confirmed count
     """
     try:
         if not model or not tokenizer:
@@ -400,17 +513,26 @@ async def analyze_clinical_note(request: AnalysisRequest):
         if embeddings.nelement() == 0:
             return AnalysisResponse(
                 extracted_keywords=[],
-                matched_conditions=[]
+                matched_conditions=[],
+                confirmed_count=0
             )
         
         # Match conditions using Authi 1.0 algorithm
-        # Returns 3-5 conditions with highest similarity scores
+        # Returns 3-5 conditions with confirmed conditions prioritized
         matches = match_conditions(keywords, embeddings, request.clinical_note)
         
+        # Count confirmed conditions
+        confirmed_count = sum(1 for m in matches if m.get('is_confirmed', False))
+        
         # Log results for monitoring
-        print(f"Analysis completed: {len(keywords)} keywords extracted, {len(matches)} conditions matched")
+        print(f"\n{'='*60}")
+        print(f"Analysis completed: {len(keywords)} keywords extracted")
+        print(f"Conditions found: {len(matches)} total, {confirmed_count} CONFIRMED")
+        print(f"{'='*60}")
         for i, match in enumerate(matches, 1):
-            print(f"  {i}. {match['condition']} ({match['icd_code']}) - Score: {match['similarity_score']:.3f}")
+            status = "✓ CONFIRMED" if match.get('is_confirmed', False) else "→ Suggested"
+            print(f"  {i}. [{status}] {match['condition']} ({match['icd_code']}) - Score: {match['similarity_score']:.3f}")
+        print(f"{'='*60}\n")
         
         return AnalysisResponse(
             extracted_keywords=keywords[:30],  # Return up to 30 most relevant keywords
@@ -419,10 +541,12 @@ async def analyze_clinical_note(request: AnalysisRequest):
                     condition=m['condition'],
                     icd_code=m['icd_code'],
                     icd_description=m['icd_description'],
-                    similarity_score=m['similarity_score']
+                    similarity_score=m['similarity_score'],
+                    is_confirmed=m.get('is_confirmed', False)
                 )
                 for m in matches
-            ]
+            ],
+            confirmed_count=confirmed_count
         )
     
     except Exception as e:
