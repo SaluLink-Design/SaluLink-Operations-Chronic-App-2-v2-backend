@@ -44,18 +44,35 @@ class AnalysisRequest(BaseModel):
     clinical_note: str
 
 
+class KeywordMatch(BaseModel):
+    keyword: str
+    similarity_score: float
+
+
+class NoteQualityScore(BaseModel):
+    completeness_score: int  # 0-100
+    missing_elements: List[str]
+    warnings: List[str]
+
+
 class MatchedConditionResponse(BaseModel):
     condition: str
     icd_code: str
     icd_description: str
     similarity_score: float
     is_confirmed: bool = False  # True if condition is explicitly mentioned in the note
+    triggering_keywords: List[KeywordMatch] = []  # Top keywords that triggered this match
+    match_explanation: str = ""  # Explanation of how the match was made
+    suggested_icd_code: Optional[str] = None  # Most relevant ICD code
+    icd_confidence: Optional[float] = None  # Confidence in ICD suggestion
+    alternative_icd_codes: List[str] = []  # Other valid ICD options
 
 
 class AnalysisResponse(BaseModel):
     extracted_keywords: List[str]
     matched_conditions: List[MatchedConditionResponse]
     confirmed_count: int = 0  # Number of conditions directly mentioned in note
+    note_quality: NoteQualityScore
 
 
 def load_model():
@@ -190,6 +207,147 @@ def calculate_cosine_similarity(embedding1, embedding2):
     return torch.nn.functional.cosine_similarity(embedding1, embedding2)
 
 
+def validate_note_completeness(clinical_text: str) -> Dict:
+    """
+    Validate the completeness of a clinical note
+    
+    Checks for:
+    - Clinical indicators (symptoms, diagnoses, patient history)
+    - Measurements (vitals, lab values)
+    - Temporal information (duration, onset, frequency)
+    - Severity markers (mild/moderate/severe, quantitative descriptions)
+    
+    Returns:
+        Dictionary with completeness_score (0-100), missing_elements, and warnings
+    """
+    import re
+    
+    clinical_text_lower = clinical_text.lower()
+    score = 0
+    max_score = 100
+    missing_elements = []
+    warnings = []
+    
+    # Check for clinical indicators (25 points)
+    clinical_indicators = {
+        'symptoms': ['pain', 'swelling', 'fever', 'cough', 'dyspnea', 'wheezing', 'fatigue', 
+                    'nausea', 'vomiting', 'diarrhea', 'headache', 'dizziness', 'weakness',
+                    'shortness of breath', 'chest pain', 'abdominal pain', 'symptoms', 'presenting'],
+        'diagnoses': ['diagnosed', 'diagnosis', 'condition', 'disease', 'disorder', 'syndrome'],
+        'history': ['history', 'previous', 'prior', 'past', 'chronic', 'long-term', 'ongoing']
+    }
+    
+    has_symptoms = any(term in clinical_text_lower for term in clinical_indicators['symptoms'])
+    has_diagnosis = any(term in clinical_text_lower for term in clinical_indicators['diagnoses'])
+    has_history = any(term in clinical_text_lower for term in clinical_indicators['history'])
+    
+    if has_symptoms:
+        score += 10
+    else:
+        missing_elements.append("symptoms or presenting complaints")
+        warnings.append("Consider documenting: patient symptoms or presenting complaints")
+    
+    if has_diagnosis:
+        score += 10
+    else:
+        missing_elements.append("diagnosis or condition mention")
+    
+    if has_history:
+        score += 5
+    else:
+        warnings.append("Consider adding: patient medical history")
+    
+    # Check for measurements/vitals (30 points)
+    vital_patterns = {
+        'blood_pressure': [r'\d+/\d+\s*(mmhg|mm hg)?', r'bp:?\s*\d+/\d+', r'blood pressure'],
+        'heart_rate': [r'\d+\s*bpm', r'hr:?\s*\d+', r'heart rate', r'pulse'],
+        'temperature': [r'\d+\.?\d*\s*(°c|°f|celsius|fahrenheit)', r'temp:?\s*\d+', r'temperature'],
+        'glucose': [r'glucose:?\s*\d+', r'blood sugar', r'bg:?\s*\d+', r'bsl:?\s*\d+'],
+        'hba1c': [r'hba1c:?\s*\d+\.?\d*%?', r'glycated hemoglobin', r'glycohemoglobin'],
+        'lab_values': [r'\d+\.?\d*\s*(mg/dl|mmol/l|g/dl)', r'lab results', r'laboratory']
+    }
+    
+    vitals_found = 0
+    for vital_type, patterns in vital_patterns.items():
+        if any(re.search(pattern, clinical_text_lower) for pattern in patterns):
+            vitals_found += 1
+    
+    # Score based on number of vitals/measurements found
+    if vitals_found >= 3:
+        score += 30
+    elif vitals_found == 2:
+        score += 20
+        warnings.append("Consider adding more measurements: vitals or lab values")
+    elif vitals_found == 1:
+        score += 10
+        missing_elements.append("comprehensive vital signs or lab values")
+        warnings.append("Consider documenting: blood pressure, heart rate, temperature, or relevant lab values")
+    else:
+        missing_elements.append("vital signs and measurements")
+        warnings.append("Consider documenting: blood pressure, heart rate, temperature, glucose, or other relevant measurements")
+    
+    # Check for temporal information (20 points)
+    temporal_patterns = {
+        'duration': [r'\d+\s*(day|week|month|year)', r'for\s+\d+', r'since\s+\d+', 
+                    r'duration', r'ongoing', r'chronic'],
+        'onset': [r'onset', r'started', r'began', r'first noticed', r'initially'],
+        'frequency': [r'daily', r'weekly', r'monthly', r'frequently', r'occasionally', 
+                     r'intermittent', r'continuous', r'constant', r'times per']
+    }
+    
+    temporal_found = 0
+    for temporal_type, patterns in temporal_patterns.items():
+        if any(re.search(pattern, clinical_text_lower) for pattern in patterns):
+            temporal_found += 1
+    
+    if temporal_found >= 2:
+        score += 20
+    elif temporal_found == 1:
+        score += 10
+        warnings.append("Consider adding: symptom duration or frequency information")
+    else:
+        missing_elements.append("temporal information (duration, onset, frequency)")
+        warnings.append("Consider documenting: when symptoms started, how long they've lasted, or how often they occur")
+    
+    # Check for severity markers (15 points)
+    severity_patterns = [
+        r'mild', r'moderate', r'severe', r'critical', r'acute', r'chronic',
+        r'grade\s+\d', r'stage\s+\d', r'class\s+\d',
+        r'worsening', r'improving', r'stable', r'deteriorating',
+        r'significantly', r'markedly', r'slightly', r'minimally'
+    ]
+    
+    has_severity = any(re.search(pattern, clinical_text_lower) for pattern in severity_patterns)
+    
+    if has_severity:
+        score += 15
+    else:
+        missing_elements.append("severity indicators")
+        warnings.append("Consider documenting: severity level (mild/moderate/severe) or disease progression")
+    
+    # Check for treatment/medication information (10 points)
+    treatment_patterns = [
+        r'treatment', r'medication', r'therapy', r'prescribed', r'taking',
+        r'drug', r'medicine', r'dose', r'dosage', r'mg', r'mcg'
+    ]
+    
+    has_treatment = any(re.search(pattern, clinical_text_lower) for pattern in treatment_patterns)
+    
+    if has_treatment:
+        score += 10
+    else:
+        warnings.append("Consider adding: current medications or treatments if applicable")
+    
+    # Ensure score is within 0-100
+    score = min(max(score, 0), max_score)
+    
+    return {
+        'completeness_score': score,
+        'missing_elements': missing_elements,
+        'warnings': warnings
+    }
+
+
 def find_direct_condition_matches(clinical_text):
     """
     Direct condition name matching - checks if condition names appear in clinical text
@@ -301,6 +459,114 @@ def find_direct_condition_matches(clinical_text):
     return list(direct_matches.values())
 
 
+def suggest_icd_code(condition_match: Dict, clinical_text: str) -> Dict:
+    """
+    Suggest the most relevant ICD code for a matched condition based on clinical note content
+    
+    Args:
+        condition_match: Dictionary containing condition, icd_code, icd_description
+        clinical_text: The clinical note text
+        
+    Returns:
+        Dictionary with suggested_icd_code, icd_confidence, and alternative_icd_codes
+    """
+    import re
+    
+    condition_name = condition_match['condition']
+    current_icd = condition_match['icd_code']
+    clinical_text_lower = clinical_text.lower()
+    
+    # Get all ICD codes for this condition
+    condition_icd_codes = [
+        entry for entry in chronic_condition_embeddings 
+        if entry['condition'] == condition_name
+    ]
+    
+    if len(condition_icd_codes) <= 1:
+        # Only one ICD code available, return it with high confidence
+        return {
+            'suggested_icd_code': current_icd,
+            'icd_confidence': 0.95 if condition_match.get('is_confirmed', False) else 0.80,
+            'alternative_icd_codes': []
+        }
+    
+    # Score each ICD code based on how well its description matches the clinical text
+    icd_scores = []
+    
+    for icd_entry in condition_icd_codes:
+        icd_description_lower = icd_entry['icd_description'].lower()
+        score = 0.0
+        matched_terms = []
+        
+        # Extract significant medical terms from ICD description (longer than 5 chars)
+        icd_terms = [
+            word for word in re.findall(r'\b[a-z]{5,}\b', icd_description_lower)
+            if word not in {'without', 'disease', 'syndrome', 'disorder', 'unspecified', 
+                           'other', 'specified', 'mellitus', 'chronic', 'complication'}
+        ]
+        
+        # Check which terms appear in clinical text
+        for term in icd_terms:
+            if term in clinical_text_lower:
+                score += 1.0
+                matched_terms.append(term)
+        
+        # Bonus for specific keywords
+        specific_keywords = {
+            'ketoacidosis': 2.0,
+            'complications': 1.5,
+            'nephropathy': 2.0,
+            'neuropathy': 2.0,
+            'retinopathy': 2.0,
+            'gangrene': 2.0,
+            'ulcer': 1.5,
+            'coma': 2.0,
+            'hypoglycemia': 1.5,
+            'hyperglycemia': 1.5,
+            'renal': 1.5,
+            'cardiac': 1.5,
+            'peripheral': 1.0
+        }
+        
+        for keyword, bonus in specific_keywords.items():
+            if keyword in icd_description_lower and keyword in clinical_text_lower:
+                score += bonus
+                if keyword not in matched_terms:
+                    matched_terms.append(keyword)
+        
+        # Calculate confidence based on match strength
+        confidence = min(score / max(len(icd_terms), 1), 1.0) if icd_terms else 0.5
+        
+        icd_scores.append({
+            'icd_code': icd_entry['icd_code'],
+            'icd_description': icd_entry['icd_description'],
+            'score': score,
+            'confidence': confidence,
+            'matched_terms': matched_terms
+        })
+    
+    # Sort by score
+    icd_scores.sort(key=lambda x: x['score'], reverse=True)
+    
+    # If top score is 0, use the current ICD code as default
+    if icd_scores[0]['score'] == 0:
+        return {
+            'suggested_icd_code': current_icd,
+            'icd_confidence': 0.60,  # Lower confidence when no specific match
+            'alternative_icd_codes': [entry['icd_code'] for entry in icd_scores[1:4]]
+        }
+    
+    # Return top suggestion with alternatives
+    best_match = icd_scores[0]
+    alternatives = [entry['icd_code'] for entry in icd_scores[1:4] if entry['icd_code'] != best_match['icd_code']]
+    
+    return {
+        'suggested_icd_code': best_match['icd_code'],
+        'icd_confidence': min(best_match['confidence'] * 0.9, 0.95),  # Cap at 0.95
+        'alternative_icd_codes': alternatives
+    }
+
+
 def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text="", threshold=0.65):
     """
     Authi 1.0 - Condition Matching Component
@@ -310,11 +576,13 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
     - Only suggest additional conditions if they are RELATED to confirmed conditions
     - If no confirmed conditions found, use semantic matching to suggest possible conditions
     - Returns 3-5 conditions with is_confirmed flag indicating explicit mention
+    - NOW ALSO tracks triggering keywords for transparency
     
     Responsible for:
     - Mapping extracted keywords to chronic condition entries
     - Returning 3–5 UNIQUE chronic condition suggestions
     - Marking confirmed vs suggested conditions
+    - Tracking which keywords triggered each match
     """
     # First, check for direct condition name matches (CONFIRMED conditions)
     direct_matches = find_direct_condition_matches(clinical_text) if clinical_text else []
@@ -323,12 +591,17 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
     confirmed_conditions = {}
     suggested_conditions = {}
     condition_scores = {}
+    condition_keyword_matches = {}  # Track which keywords matched which conditions
     
     # Add confirmed matches (explicitly mentioned in note)
     for match in direct_matches:
         condition_name = match['condition']
         if condition_name not in confirmed_conditions or match['similarity_score'] > confirmed_conditions[condition_name]['similarity_score']:
             confirmed_conditions[condition_name] = match
+            # For confirmed matches, the triggering "keyword" is the direct mention
+            condition_keyword_matches[condition_name] = [
+                {'keyword': 'direct_mention', 'similarity_score': match['similarity_score']}
+            ]
             print(f"   ✓ CONFIRMED condition found: {match['condition']}")
     
     # Get the count of unique confirmed conditions
@@ -365,6 +638,8 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         # AND only if we need more conditions to reach 3-5
         if confirmed_count < 5 and len(allowed_suggestions) > 0:
             for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
+                current_keyword = clinical_keywords[i] if i < len(clinical_keywords) else f"keyword_{i}"
+                
                 for condition_data in chronic_condition_embeddings:
                     # Only consider related conditions
                     if condition_data['condition'] not in allowed_suggestions:
@@ -384,6 +659,14 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
                             condition_scores[condition_name] = []
                         condition_scores[condition_name].append(similarity.item())
                         
+                        # Track keyword matches
+                        if condition_name not in condition_keyword_matches:
+                            condition_keyword_matches[condition_name] = []
+                        condition_keyword_matches[condition_name].append({
+                            'keyword': current_keyword,
+                            'similarity_score': similarity.item()
+                        })
+                        
                         if condition_name not in suggested_conditions or similarity.item() > suggested_conditions[condition_name]['similarity_score']:
                             suggested_conditions[condition_name] = {
                                 'condition': condition_data['condition'],
@@ -398,6 +681,7 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         print(f"   No confirmed conditions found. Using semantic analysis to suggest conditions.")
         
         for i, keyword_embedding in enumerate(clinical_keyword_embeddings):
+            current_keyword = clinical_keywords[i] if i < len(clinical_keywords) else f"keyword_{i}"
             best_match = None
             highest_similarity = -1.0
             
@@ -414,6 +698,14 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
                     if condition_name not in condition_scores:
                         condition_scores[condition_name] = []
                     condition_scores[condition_name].append(similarity.item())
+                    
+                    # Track keyword matches
+                    if condition_name not in condition_keyword_matches:
+                        condition_keyword_matches[condition_name] = []
+                    condition_keyword_matches[condition_name].append({
+                        'keyword': current_keyword,
+                        'similarity_score': similarity.item()
+                    })
                     
                     if similarity > highest_similarity:
                         highest_similarity = similarity
@@ -451,6 +743,31 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
             if suggestion['similarity_score'] >= 0.70:
                 result_list.append(suggestion)
                 print(f"   → Suggested related condition: {suggestion['condition']} (score: {suggestion['similarity_score']:.3f})")
+    
+    # Attach triggering keywords to each condition
+    for condition_match in result_list:
+        condition_name = condition_match['condition']
+        if condition_name in condition_keyword_matches:
+            # Get top 5 keywords sorted by similarity
+            keyword_matches = sorted(
+                condition_keyword_matches[condition_name],
+                key=lambda x: x['similarity_score'],
+                reverse=True
+            )[:5]
+            condition_match['triggering_keywords'] = keyword_matches
+        else:
+            condition_match['triggering_keywords'] = []
+        
+        # Add match explanation
+        if condition_match.get('is_confirmed', False):
+            condition_match['match_explanation'] = "Direct mention in clinical note"
+        else:
+            condition_match['match_explanation'] = "Semantic match based on clinical terminology"
+    
+    # Add ICD code suggestions for each condition
+    for condition_match in result_list:
+        icd_suggestion = suggest_icd_code(condition_match, clinical_text)
+        condition_match.update(icd_suggestion)
     
     # Sort final result by score
     result_list.sort(key=lambda x: x['similarity_score'], reverse=True)
@@ -507,6 +824,9 @@ async def analyze_clinical_note(request: AnalysisRequest):
         if not model or not tokenizer:
             raise HTTPException(status_code=500, detail="Model not loaded")
         
+        # Validate note completeness first
+        note_quality = validate_note_completeness(request.clinical_note)
+        
         # Extract keywords
         keywords, embeddings = extract_keywords_clinicalbert(request.clinical_note)
         
@@ -514,7 +834,12 @@ async def analyze_clinical_note(request: AnalysisRequest):
             return AnalysisResponse(
                 extracted_keywords=[],
                 matched_conditions=[],
-                confirmed_count=0
+                confirmed_count=0,
+                note_quality=NoteQualityScore(
+                    completeness_score=note_quality['completeness_score'],
+                    missing_elements=note_quality['missing_elements'],
+                    warnings=note_quality['warnings']
+                )
             )
         
         # Match conditions using Authi 1.0 algorithm
@@ -526,12 +851,14 @@ async def analyze_clinical_note(request: AnalysisRequest):
         
         # Log results for monitoring
         print(f"\n{'='*60}")
+        print(f"Note Quality Score: {note_quality['completeness_score']}/100")
         print(f"Analysis completed: {len(keywords)} keywords extracted")
         print(f"Conditions found: {len(matches)} total, {confirmed_count} CONFIRMED")
         print(f"{'='*60}")
         for i, match in enumerate(matches, 1):
             status = "✓ CONFIRMED" if match.get('is_confirmed', False) else "→ Suggested"
-            print(f"  {i}. [{status}] {match['condition']} ({match['icd_code']}) - Score: {match['similarity_score']:.3f}")
+            suggested_icd = f" [Suggested: {match.get('suggested_icd_code', 'N/A')}]" if match.get('suggested_icd_code') else ""
+            print(f"  {i}. [{status}] {match['condition']} ({match['icd_code']}) - Score: {match['similarity_score']:.3f}{suggested_icd}")
         print(f"{'='*60}\n")
         
         return AnalysisResponse(
@@ -542,11 +869,26 @@ async def analyze_clinical_note(request: AnalysisRequest):
                     icd_code=m['icd_code'],
                     icd_description=m['icd_description'],
                     similarity_score=m['similarity_score'],
-                    is_confirmed=m.get('is_confirmed', False)
+                    is_confirmed=m.get('is_confirmed', False),
+                    triggering_keywords=[
+                        KeywordMatch(
+                            keyword=kw['keyword'],
+                            similarity_score=kw['similarity_score']
+                        ) for kw in m.get('triggering_keywords', [])
+                    ],
+                    match_explanation=m.get('match_explanation', ''),
+                    suggested_icd_code=m.get('suggested_icd_code'),
+                    icd_confidence=m.get('icd_confidence'),
+                    alternative_icd_codes=m.get('alternative_icd_codes', [])
                 )
                 for m in matches
             ],
-            confirmed_count=confirmed_count
+            confirmed_count=confirmed_count,
+            note_quality=NoteQualityScore(
+                completeness_score=note_quality['completeness_score'],
+                missing_elements=note_quality['missing_elements'],
+                warnings=note_quality['warnings']
+            )
         )
     
     except Exception as e:

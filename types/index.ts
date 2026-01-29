@@ -30,11 +30,28 @@ export interface TreatmentBasketItem {
   specialists?: string;
 }
 
+export interface KeywordMatch {
+  keyword: string;
+  similarityScore: number;
+}
+
 export interface MatchedCondition {
   condition: string;
   icdCode: string;
   icdDescription: string;
   similarityScore: number;
+  isConfirmed?: boolean;
+  triggeringKeywords?: KeywordMatch[];
+  matchExplanation?: string;
+  suggestedIcdCode?: string;
+  icdConfidence?: number;
+  alternativeIcdCodes?: string[];
+}
+
+export interface NoteQualityScore {
+  completenessScore: number;
+  missingElements: string[];
+  warnings: string[];
 }
 
 export interface TreatmentItem {
@@ -93,6 +110,8 @@ export interface MedicationReport {
 export interface AnalysisResult {
   extractedKeywords: string[];
   matchedConditions: MatchedCondition[];
+  noteQuality?: NoteQualityScore;
+  confirmedCount?: number;
 }
 
 export interface WorkflowStep {

@@ -17,7 +17,7 @@ import CaseActions from '@/components/CaseActions';
 import OngoingManagement from '@/components/OngoingManagement';
 import MedicationReport from '@/components/MedicationReport';
 import Referral from '@/components/Referral';
-import { MatchedCondition } from '@/types';
+import { MatchedCondition, NoteQualityScore } from '@/types';
 
 type WorkflowMode = 'new' | 'ongoing' | 'medication' | 'referral';
 
@@ -26,6 +26,7 @@ export default function Home() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [matchedConditions, setMatchedConditions] = useState<MatchedCondition[]>([]);
+  const [noteQuality, setNoteQuality] = useState<NoteQualityScore | undefined>(undefined);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowMode>('new');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [patientName, setPatientName] = useState('');
@@ -55,6 +56,7 @@ export default function Home() {
       const data = await response.json();
       store.setExtractedKeywords(data.extracted_keywords || []);
       setMatchedConditions(data.matched_conditions || []);
+      setNoteQuality(data.note_quality);
       
       if (data.matched_conditions && data.matched_conditions.length > 0) {
         store.setCurrentStep(1);
@@ -305,6 +307,7 @@ export default function Home() {
                   onChange={store.setClinicalNote}
                   onAnalyze={handleAnalyze}
                   isAnalyzing={isAnalyzing}
+                  noteQuality={noteQuality}
                 />
               )}
 
@@ -323,6 +326,15 @@ export default function Home() {
                   onSelect={(code, desc) => {
                     store.setSelectedCondition(store.selectedCondition!, code, desc);
                   }}
+                  suggestedIcdCode={
+                    matchedConditions.find(c => c.condition === store.selectedCondition)?.suggestedIcdCode
+                  }
+                  icdConfidence={
+                    matchedConditions.find(c => c.condition === store.selectedCondition)?.icdConfidence
+                  }
+                  alternativeIcdCodes={
+                    matchedConditions.find(c => c.condition === store.selectedCondition)?.alternativeIcdCodes
+                  }
                 />
               )}
 

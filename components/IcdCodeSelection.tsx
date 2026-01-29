@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Check, Search, FileText } from 'lucide-react';
+import { Check, Search, FileText, Sparkles, Target } from 'lucide-react';
 import { ChronicCondition } from '@/types';
 import { DataService } from '@/lib/dataService';
 
@@ -9,16 +9,34 @@ interface IcdCodeSelectionProps {
   condition: string;
   selectedIcdCode: string | null;
   onSelect: (icdCode: string, description: string) => void;
+  suggestedIcdCode?: string;
+  icdConfidence?: number;
+  alternativeIcdCodes?: string[];
 }
 
-const IcdCodeSelection = ({ condition, selectedIcdCode, onSelect }: IcdCodeSelectionProps) => {
+const IcdCodeSelection = ({ 
+  condition, 
+  selectedIcdCode, 
+  onSelect, 
+  suggestedIcdCode,
+  icdConfidence,
+  alternativeIcdCodes = []
+}: IcdCodeSelectionProps) => {
   const [icdCodes, setIcdCodes] = useState<ChronicCondition[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   
   useEffect(() => {
     const codes = DataService.getIcdCodesForCondition(condition);
     setIcdCodes(codes);
-  }, [condition]);
+    
+    // Auto-select suggested ICD code if available and nothing is selected yet
+    if (suggestedIcdCode && !selectedIcdCode && codes.length > 0) {
+      const suggestedCode = codes.find(c => c.icdCode === suggestedIcdCode);
+      if (suggestedCode) {
+        onSelect(suggestedCode.icdCode, suggestedCode.icdDescription);
+      }
+    }
+  }, [condition, suggestedIcdCode]);
   
   const filteredCodes = icdCodes.filter(code =>
     code.icdCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -50,9 +68,43 @@ const IcdCodeSelection = ({ condition, selectedIcdCode, onSelect }: IcdCodeSelec
         </div>
       </div>
       
+      {suggestedIcdCode && icdConfidence && (
+        <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-purple-900 mb-1">AI Suggested ICD Code</h3>
+              <p className="text-sm text-purple-700 mb-2">
+                Based on your clinical note, we recommend: <span className="font-mono font-bold">{suggestedIcdCode}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-white rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-purple-500 to-blue-500"
+                    style={{ width: `${Math.round(icdConfidence * 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-purple-700">
+                  {Math.round(icdConfidence * 100)}% confidence
+                </span>
+              </div>
+              {alternativeIcdCodes.length > 0 && (
+                <p className="text-xs text-purple-600 mt-2">
+                  Alternative options: {alternativeIcdCodes.join(', ')}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="space-y-2 max-h-[400px] overflow-y-auto">
         {filteredCodes.map((code, index) => {
           const isSelected = selectedIcdCode === code.icdCode;
+          const isSuggested = code.icdCode === suggestedIcdCode;
+          const isAlternative = alternativeIcdCodes.includes(code.icdCode);
           
           return (
             <button
@@ -61,15 +113,31 @@ const IcdCodeSelection = ({ condition, selectedIcdCode, onSelect }: IcdCodeSelec
               className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                 isSelected
                   ? 'border-blue-500 bg-blue-50'
+                  : isSuggested
+                  ? 'border-purple-300 bg-purple-50 hover:border-purple-400'
+                  : isAlternative
+                  ? 'border-blue-200 bg-blue-50 hover:border-blue-300'
                   : 'border-gray-200 hover:border-blue-300 bg-white'
               }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-mono font-semibold text-blue-600">
                       {code.icdCode}
                     </span>
+                    {isSuggested && !isSelected && (
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        AI Suggested
+                      </span>
+                    )}
+                    {isAlternative && !isSelected && !isSuggested && (
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                        <Target className="w-3 h-3" />
+                        Alternative
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-700">
                     {code.icdDescription}
