@@ -380,7 +380,10 @@ def find_direct_condition_matches(clinical_text):
         'chronic renal disease': ['chronic kidney disease', 'ckd', 'renal failure', 'kidney failure', 'nephropathy', 'renal insufficiency', 'kidney disease'],
         'cardiomyopathy': ['cardiomyopathic', 'dilated cardiomyopathy', 'hypertrophic cardiomyopathy', 'restrictive cardiomyopathy'],
         'hyperlipidaemia': ['hyperlipidemia', 'high cholesterol', 'dyslipidemia', 'dyslipidaemia', 'elevated cholesterol', 'hypercholesterolemia', 'hypercholesterolaemia'],
-        'haemophilia': ['hemophilia', 'factor viii deficiency', 'factor ix deficiency', 'bleeding disorder']
+        'haemophilia': ['hemophilia', 'factor viii deficiency', 'factor ix deficiency', 'bleeding disorder'],
+        'chronic obstructive pulmonary disease': ['copd', 'emphysema', 'chronic bronchitis', 'obstructive lung disease', 'obstructive airway disease'],
+        'epilepsy': ['seizure disorder', 'seizures', 'epileptic', 'convulsions', 'fits'],
+        'hypothyroidism': ['underactive thyroid', 'low thyroid', 'thyroid deficiency', 'myxedema', 'myxoedema', 'hashimoto']
     }
     
     # Strategy 1: Direct condition name matching (CONFIRMED)
@@ -614,15 +617,18 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         
         # Define related condition pairs (comorbidities often found together)
         related_conditions = {
-            'Hypertension': ['Cardiac Failure', 'Chronic Renal Disease', 'Cardiomyopathy', 'Diabetes Mellitus Type 2'],
-            'Diabetes Mellitus Type 1': ['Chronic Renal Disease', 'Hypertension', 'Hyperlipidaemia'],
-            'Diabetes Mellitus Type 2': ['Hypertension', 'Hyperlipidaemia', 'Chronic Renal Disease', 'Cardiac Failure'],
-            'Cardiac Failure': ['Hypertension', 'Cardiomyopathy', 'Chronic Renal Disease'],
+            'Hypertension': ['Cardiac Failure', 'Chronic Renal Disease', 'Cardiomyopathy', 'Diabetes Mellitus Type 2', 'Hypothyroidism'],
+            'Diabetes Mellitus Type 1': ['Chronic Renal Disease', 'Hypertension', 'Hyperlipidaemia', 'Hypothyroidism'],
+            'Diabetes Mellitus Type 2': ['Hypertension', 'Hyperlipidaemia', 'Chronic Renal Disease', 'Cardiac Failure', 'Hypothyroidism'],
+            'Cardiac Failure': ['Hypertension', 'Cardiomyopathy', 'Chronic Renal Disease', 'Hypothyroidism'],
             'Cardiomyopathy': ['Cardiac Failure', 'Hypertension'],
             'Chronic Renal Disease': ['Hypertension', 'Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2', 'Cardiac Failure'],
-            'Hyperlipidaemia': ['Hypertension', 'Diabetes Mellitus Type 2'],
-            'Asthma': [],  # Asthma typically stands alone
-            'Haemophilia': []  # Haemophilia typically stands alone
+            'Hyperlipidaemia': ['Hypertension', 'Diabetes Mellitus Type 2', 'Hypothyroidism'],
+            'Asthma': ['Chronic Obstructive Pulmonary Disease'],  # COPD can coexist with asthma
+            'Haemophilia': [],  # Haemophilia typically stands alone
+            'Chronic Obstructive Pulmonary Disease': ['Cardiac Failure', 'Hypertension', 'Asthma'],  # COPD often found with cardiovascular issues
+            'Epilepsy': [],  # Epilepsy typically stands alone
+            'Hypothyroidism': ['Hypertension', 'Diabetes Mellitus Type 2', 'Hyperlipidaemia']  # Thyroid issues often accompany metabolic conditions
         }
         
         # Get related conditions for the confirmed ones
