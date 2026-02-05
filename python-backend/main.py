@@ -348,6 +348,126 @@ def validate_note_completeness(clinical_text: str) -> Dict:
     }
 
 
+def detect_negation_context(clinical_text, condition_term):
+    """
+    Detect if a condition mention is negated (e.g., "no diabetes", "denies hypertension")
+    Returns: (is_negated: bool, context: str)
+    
+    This is critical to avoid false positives when conditions are mentioned but ruled out.
+    """
+    import re
+    
+    # Negation patterns - comprehensive list of medical negation terms
+    negation_patterns = [
+        r'\bno\s+(?:history\s+(?:of\s+)?)?' + re.escape(condition_term),
+        r'\bdenies\s+' + re.escape(condition_term),
+        r'\brules?\s+out\s+' + re.escape(condition_term),
+        r'\br/o\s+' + re.escape(condition_term),
+        r'\bruled\s+out\s+' + re.escape(condition_term),
+        r'\bnegative\s+for\s+' + re.escape(condition_term),
+        r'\bwithout\s+(?:evidence\s+(?:of\s+)?)?' + re.escape(condition_term),
+        r'\babsent\s+' + re.escape(condition_term),
+        r'\bnot\s+consistent\s+with\s+' + re.escape(condition_term),
+        r'\bno\s+signs?\s+of\s+' + re.escape(condition_term),
+        r'\bunlikely\s+(?:to\s+be\s+)?' + re.escape(condition_term),
+        r'\bdiscontinued\s+' + re.escape(condition_term),
+        r'\bresolved\s+' + re.escape(condition_term),
+        r'\bfree\s+(?:of|from)\s+' + re.escape(condition_term),
+        r'\bexclude[ds]?\s+' + re.escape(condition_term),
+        r'\bnot\s+(?:have|has|having)\s+' + re.escape(condition_term),
+        r'\bno\s+longer\s+(?:has|have|having)\s+' + re.escape(condition_term)
+    ]
+    
+    clinical_text_lower = clinical_text.lower()
+    condition_term_lower = condition_term.lower()
+    
+    for pattern in negation_patterns:
+        match = re.search(pattern, clinical_text_lower, re.IGNORECASE)
+        if match:
+            return (True, match.group())
+    
+    return (False, None)
+
+
+def get_condition_symptom_indicators():
+    """
+    Returns symptom patterns that strongly indicate specific conditions.
+    This improves semantic matching accuracy by recognizing condition-specific terminology.
+    """
+    return {
+        'Asthma': [
+            'wheezing', 'bronchospasm', 'shortness of breath on exertion',
+            'nocturnal cough', 'dyspnea', 'chest tightness', 'peak flow',
+            'inhaler use', 'albuterol', 'bronchodilator', 'salbutamol',
+            'reactive airway', 'bronchial hyperresponsiveness'
+        ],
+        'Diabetes Mellitus Type 1': [
+            'polyuria', 'polydipsia', 'polyphagia', 'weight loss',
+            'ketoacidosis', 'dka', 'insulin therapy', 'hyperglycemia',
+            'blood glucose', 'a1c', 'hba1c', 'insulin pump',
+            'continuous glucose monitor', 'cgm', 'diabetic ketoacidosis'
+        ],
+        'Diabetes Mellitus Type 2': [
+            'polyuria', 'polydipsia', 'hyperglycemia', 'metformin',
+            'oral hypoglycemic', 'insulin resistance', 'metabolic syndrome',
+            'elevated glucose', 'a1c', 'hba1c', 'prediabetes',
+            'glyburide', 'glipizide', 'acarbose', 'sitagliptin'
+        ],
+        'Hypertension': [
+            'elevated bp', 'systolic pressure', 'diastolic pressure',
+            'hypertensive crisis', 'headache', 'antihypertensive',
+            'amlodipine', 'lisinopril', 'losartan', 'blood pressure',
+            'enalapril', 'valsartan', 'ramipril', 'elevated blood pressure'
+        ],
+        'Cardiac Failure': [
+            'dyspnea on exertion', 'orthopnea', 'paroxysmal nocturnal dyspnea',
+            'pnd', 'edema', 'peripheral edema', 'pulmonary edema',
+            'jugular venous distension', 'jvd', 'rales', 'crackles',
+            'ejection fraction', 'bnp', 'furosemide', 'lasix',
+            'reduced ejection fraction', 'systolic dysfunction', 'biventricular'
+        ],
+        'Chronic Renal Disease': [
+            'elevated creatinine', 'decreased egfr', 'proteinuria',
+            'hematuria', 'uremia', 'dialysis', 'renal replacement',
+            'fluid retention', 'anemia of ckd', 'hyperkalemia',
+            'uremic', 'azotemia', 'chronic kidney disease', 'renal insufficiency'
+        ],
+        'Cardiomyopathy': [
+            'reduced ejection fraction', 'lvef', 'left ventricular dysfunction',
+            'dilated heart', 'ventricular hypertrophy', 'wall motion abnormality',
+            'diastolic dysfunction', 'systolic dysfunction', 'cardiomegaly'
+        ],
+        'Hyperlipidaemia': [
+            'elevated cholesterol', 'high ldl', 'low hdl', 'triglycerides',
+            'lipid panel', 'statin', 'atorvastatin', 'simvastatin',
+            'pravastatin', 'rosuvastatin', 'hypercholesterolemia', 'dyslipidemia'
+        ],
+        'Haemophilia': [
+            'prolonged bleeding', 'factor deficiency', 'spontaneous bleeding',
+            'hemarthrosis', 'easy bruising', 'bleeding disorder',
+            'clotting disorder', 'factor viii', 'factor ix', 'christmas disease'
+        ],
+        'Chronic Obstructive Pulmonary Disease': [
+            'chronic cough', 'sputum production', 'dyspnea', 'barrel chest',
+            'prolonged expiration', 'smoking history', 'fev1', 'spirometry',
+            'tiotropium', 'ipratropium', 'oxygen therapy', 'pack year',
+            'chronic bronchitis', 'emphysema', 'airflow limitation'
+        ],
+        'Epilepsy': [
+            'seizure activity', 'loss of consciousness', 'tonic clonic',
+            'aura', 'postictal', 'anticonvulsant', 'antiepileptic',
+            'levetiracetam', 'phenytoin', 'valproic acid', 'eeg',
+            'convulsions', 'epileptic', 'seizure disorder', 'grand mal', 'petit mal'
+        ],
+        'Hypothyroidism': [
+            'elevated tsh', 'low t4', 'low t3', 'fatigue', 'cold intolerance',
+            'weight gain', 'bradycardia', 'constipation', 'dry skin',
+            'levothyroxine', 'synthroid', 'thyroid replacement',
+            'myxedema', 'hashimoto', 'underactive thyroid', 'thyroid deficiency'
+        ]
+    }
+
+
 def find_direct_condition_matches(clinical_text):
     """
     Direct condition name matching - checks if condition names appear in clinical text
@@ -370,20 +490,82 @@ def find_direct_condition_matches(clinical_text):
     for entry in chronic_condition_embeddings:
         condition_names.add(entry['condition'].lower())
     
-    # Define condition aliases for common medical variations
+    # Define condition aliases for common medical variations (EXPANDED for better accuracy)
     condition_aliases = {
-        'diabetes mellitus type 1': ['type 1 diabetes', 'type i diabetes', 't1dm', 'type1 diabetes', 'insulin-dependent diabetes', 'insulin dependent diabetes', 'iddm'],
-        'diabetes mellitus type 2': ['type 2 diabetes', 'type ii diabetes', 't2dm', 'type2 diabetes', 'non-insulin-dependent diabetes', 'non insulin dependent diabetes', 'niddm', 'adult-onset diabetes'],
-        'hypertension': ['high blood pressure', 'elevated blood pressure', 'hypertensive', 'htn', 'bp elevated', 'raised blood pressure'],
-        'asthma': ['asthmatic', 'bronchial asthma'],
-        'cardiac failure': ['heart failure', 'congestive heart failure', 'chf', 'left ventricular failure', 'right heart failure', 'cardiac decompensation'],
-        'chronic renal disease': ['chronic kidney disease', 'ckd', 'renal failure', 'kidney failure', 'nephropathy', 'renal insufficiency', 'kidney disease'],
-        'cardiomyopathy': ['cardiomyopathic', 'dilated cardiomyopathy', 'hypertrophic cardiomyopathy', 'restrictive cardiomyopathy'],
-        'hyperlipidaemia': ['hyperlipidemia', 'high cholesterol', 'dyslipidemia', 'dyslipidaemia', 'elevated cholesterol', 'hypercholesterolemia', 'hypercholesterolaemia'],
-        'haemophilia': ['hemophilia', 'factor viii deficiency', 'factor ix deficiency', 'bleeding disorder'],
-        'chronic obstructive pulmonary disease': ['copd', 'emphysema', 'chronic bronchitis', 'obstructive lung disease', 'obstructive airway disease'],
-        'epilepsy': ['seizure disorder', 'seizures', 'epileptic', 'convulsions', 'fits'],
-        'hypothyroidism': ['underactive thyroid', 'low thyroid', 'thyroid deficiency', 'myxedema', 'myxoedema', 'hashimoto']
+        'diabetes mellitus type 1': [
+            'type 1 diabetes', 'type i diabetes', 't1dm', 'type1 diabetes',
+            'insulin-dependent diabetes', 'insulin dependent diabetes', 'iddm',
+            'juvenile diabetes', 'autoimmune diabetes', 'brittle diabetes'
+        ],
+        'diabetes mellitus type 2': [
+            'type 2 diabetes', 'type ii diabetes', 't2dm', 'type2 diabetes',
+            'non-insulin-dependent diabetes', 'non insulin dependent diabetes', 'niddm',
+            'adult-onset diabetes', 'metabolic diabetes', 'insulin resistance',
+            'non-insulin dependent diabetes'
+        ],
+        'hypertension': [
+            'high blood pressure', 'elevated blood pressure', 'hypertensive', 'htn',
+            'bp elevated', 'raised blood pressure', 'systolic hypertension',
+            'diastolic hypertension', 'malignant hypertension', 'resistant hypertension',
+            'stage 1 hypertension', 'stage 2 hypertension', 'essential hypertension',
+            'primary hypertension', 'secondary hypertension'
+        ],
+        'asthma': [
+            'asthmatic', 'bronchial asthma', 'reactive airway disease', 'rad',
+            'allergic asthma', 'exercise-induced asthma', 'occupational asthma',
+            'severe asthma', 'status asthmaticus', 'bronchospasm',
+            'extrinsic asthma', 'intrinsic asthma'
+        ],
+        'cardiac failure': [
+            'heart failure', 'congestive heart failure', 'chf',
+            'left ventricular failure', 'right heart failure', 'cardiac decompensation',
+            'systolic heart failure', 'diastolic heart failure', 'hfpef', 'hfref',
+            'acute heart failure', 'chronic heart failure', 'decompensated heart failure',
+            'biventricular failure', 'ventricular dysfunction', 'congestive cardiac failure'
+        ],
+        'chronic renal disease': [
+            'chronic kidney disease', 'ckd', 'renal failure', 'kidney failure',
+            'nephropathy', 'renal insufficiency', 'kidney disease', 'esrd',
+            'end stage renal disease', 'chronic kidney failure', 'renal impairment',
+            'stage 1 ckd', 'stage 2 ckd', 'stage 3 ckd', 'stage 4 ckd', 'stage 5 ckd',
+            'glomerulonephritis', 'pyelonephritis', 'diabetic nephropathy',
+            'chronic renal failure', 'chronic renal insufficiency'
+        ],
+        'cardiomyopathy': [
+            'cardiomyopathic', 'dilated cardiomyopathy', 'hypertrophic cardiomyopathy',
+            'restrictive cardiomyopathy', 'dcm', 'hcm', 'ischaemic cardiomyopathy',
+            'ischemic cardiomyopathy', 'alcoholic cardiomyopathy', 'viral cardiomyopathy',
+            'idiopathic cardiomyopathy', 'hypertrophic obstructive cardiomyopathy', 'hocm'
+        ],
+        'hyperlipidaemia': [
+            'hyperlipidemia', 'high cholesterol', 'dyslipidemia', 'dyslipidaemia',
+            'elevated cholesterol', 'hypercholesterolemia', 'hypercholesterolaemia',
+            'hypertriglyceridemia', 'mixed hyperlipidemia', 'familial hypercholesterolemia',
+            'elevated ldl', 'low hdl', 'lipid disorder', 'hyperlipemia'
+        ],
+        'haemophilia': [
+            'hemophilia', 'factor viii deficiency', 'factor ix deficiency',
+            'bleeding disorder', 'haemophilia a', 'haemophilia b', 'hemophilia a',
+            'hemophilia b', 'christmas disease', 'clotting disorder', 'coagulation disorder'
+        ],
+        'chronic obstructive pulmonary disease': [
+            'copd', 'emphysema', 'chronic bronchitis', 'obstructive lung disease',
+            'obstructive airway disease', 'chronic obstructive airway disease',
+            'coad', 'chronic airflow limitation', 'chronic airflow obstruction',
+            'chronic obstructive lung disease'
+        ],
+        'epilepsy': [
+            'seizure disorder', 'seizures', 'epileptic', 'convulsions', 'fits',
+            'focal seizures', 'generalized seizures', 'tonic clonic seizures',
+            'petit mal', 'grand mal', 'absence seizures', 'status epilepticus',
+            'refractory epilepsy', 'temporal lobe epilepsy', 'partial seizures'
+        ],
+        'hypothyroidism': [
+            'underactive thyroid', 'low thyroid', 'thyroid deficiency',
+            'myxedema', 'myxoedema', 'hashimoto', 'hashimoto thyroiditis',
+            'hashimotos disease', 'primary hypothyroidism', 'secondary hypothyroidism',
+            'subclinical hypothyroidism', 'thyroid insufficiency', 'hashimotos thyroiditis'
+        ]
     }
     
     # Strategy 1: Direct condition name matching (CONFIRMED)
@@ -391,6 +573,12 @@ def find_direct_condition_matches(clinical_text):
         # Create word boundary regex pattern for accurate matching
         pattern = r'\b' + re.escape(condition_name) + r'\b'
         if re.search(pattern, clinical_text_lower):
+            # Check for negation before confirming
+            is_negated, negation_context = detect_negation_context(clinical_text, condition_name)
+            if is_negated:
+                print(f"   ⚠ Skipping negated condition: {condition_name} (context: '{negation_context}')")
+                continue  # Skip this condition - it's explicitly ruled out
+            
             # Find all matching entries for this condition
             for entry in chronic_condition_embeddings:
                 if entry['condition'].lower() == condition_name:
@@ -410,6 +598,12 @@ def find_direct_condition_matches(clinical_text):
         for alias in aliases:
             pattern = r'\b' + re.escape(alias) + r'\b'
             if re.search(pattern, clinical_text_lower):
+                # Check for negation before confirming
+                is_negated, negation_context = detect_negation_context(clinical_text, alias)
+                if is_negated:
+                    print(f"   ⚠ Skipping negated alias: {alias} -> {canonical_condition} (context: '{negation_context}')")
+                    continue  # Skip this alias - it's negated
+                
                 # Find the canonical condition in our database
                 for entry in chronic_condition_embeddings:
                     if entry['condition'].lower() == canonical_condition:
@@ -464,7 +658,10 @@ def find_direct_condition_matches(clinical_text):
 
 def suggest_icd_code(condition_match: Dict, clinical_text: str) -> Dict:
     """
-    Suggest the most relevant ICD code for a matched condition based on clinical note content
+    Enhanced context-aware ICD code suggestion based on clinical note content
+    
+    Uses condition-specific rules to select the most appropriate ICD code
+    based on complications, severity, and specific terminology mentioned.
     
     Args:
         condition_match: Dictionary containing condition, icd_code, icd_description
@@ -493,15 +690,119 @@ def suggest_icd_code(condition_match: Dict, clinical_text: str) -> Dict:
             'alternative_icd_codes': []
         }
     
-    # Score each ICD code based on how well its description matches the clinical text
+    # Context-based ICD selection rules - condition-specific patterns
+    context_rules = {
+        'Diabetes Mellitus Type 1': {
+            'with coma|comatose': ['E10.0', 'E12.0'],
+            'ketoacidosis|dka|diabetic ketoacidosis': ['E10.1', 'E12.1'],
+            'renal|kidney|nephropathy': ['E10.2'],
+            'ophthalmic|eye|retinopathy|vision|cataract': ['E10.3'],
+            'neuropathy|nerve|polyneuropathy|mononeuropathy': ['E10.4'],
+            'peripheral|circulatory|angiopathy': ['E10.5'],
+            'multiple complication': ['E10.7'],
+            'without complication|uncomplicated|unspecified': ['E10.9']
+        },
+        'Diabetes Mellitus Type 2': {
+            'with coma|comatose': ['E11.0'],
+            'ketoacidosis|dka': ['E11.1'],
+            'renal|kidney|nephropathy': ['E11.2'],
+            'ophthalmic|eye|retinopathy|vision|cataract': ['E11.3'],
+            'neuropathy|nerve|polyneuropathy|mononeuropathy': ['E11.4'],
+            'peripheral|circulatory|angiopathy': ['E11.5'],
+            'multiple complication': ['E11.7'],
+            'without complication|uncomplicated|unspecified': ['E11.9']
+        },
+        'Hypertension': {
+            'heart failure|congestive': ['I11.0', 'I13.0', 'I13.2'],
+            'renal|kidney|renal failure': ['I12.0', 'I13.1', 'I13.2'],
+            'pregnancy|childbirth|gravid': ['O10.'],
+            'secondary|endocrine': ['I15.'],
+            'essential|primary': ['I10']
+        },
+        'Cardiac Failure': {
+            'congestive|chf': ['I50.0'],
+            'left ventricular|lvef|left heart': ['I50.1'],
+            'hypertensive': ['I11.0', 'I13.0']
+        },
+        'Chronic Renal Disease': {
+            'stage 5|esrd|end stage|end-stage': ['N18.0'],
+            'stage 4': ['N18.4'],
+            'stage 3': ['N18.3'],
+            'stage 2': ['N18.2'],
+            'stage 1': ['N18.1'],
+            'hypertensive': ['I12.0', 'I13.1'],
+            'glomerulo|glomerulonephritis': ['N03.'],
+            'pyelonephritis|tubulo': ['N11.']
+        },
+        'Asthma': {
+            'allergic|extrinsic|atopic': ['J45.0'],
+            'nonallergic|intrinsic|non-allergic': ['J45.1'],
+            'mixed': ['J45.8'],
+            'status asthmaticus|severe|acute': ['J46'],
+            'unspecified': ['J45.9']
+        },
+        'Chronic Obstructive Pulmonary Disease': {
+            'acute|exacerbation|infection|acute lower respiratory': ['J44.0', 'J44.1'],
+            'emphysema|panlobular|centrilobular': ['J43.'],
+            'unspecified': ['J44.9']
+        },
+        'Epilepsy': {
+            'focal|partial|localization': ['G40.0', 'G40.1', 'G40.2'],
+            'generalized|idiopathic': ['G40.3', 'G40.4'],
+            'grand mal|tonic.clonic': ['G40.6'],
+            'status epilepticus': ['G41.'],
+            'unspecified': ['G40.9']
+        },
+        'Hypothyroidism': {
+            'congenital|neonatal': ['E03.0', 'E03.1'],
+            'myxedema|myxoedema|coma': ['E03.5'],
+            'drug|medication|medicament': ['E03.2'],
+            'postprocedural|post.surgical': ['E89.0'],
+            'iodine': ['E01.8', 'E02'],
+            'unspecified': ['E03.9']
+        },
+        'Cardiomyopathy': {
+            'ischaemic|ischemic|coronary': ['I25.5'],
+            'dilated|dcm': ['I42.0'],
+            'hypertrophic|hcm|obstructive': ['I42.1', 'I42.2'],
+            'restrictive': ['I42.5'],
+            'alcoholic|alcohol': ['I42.6'],
+            'unspecified': ['I42.9']
+        },
+        'Hyperlipidaemia': {
+            'pure.*cholesterol|hypercholesterol': ['E78.0'],
+            'triglyceride|hyperglycerid': ['E78.1'],
+            'mixed|combined': ['E78.2'],
+            'unspecified': ['E78.5']
+        },
+        'Haemophilia': {
+            'factor viii|factor 8|haemophilia a|hemophilia a': ['D66'],
+            'factor ix|factor 9|christmas|haemophilia b|hemophilia b': ['D67']
+        }
+    }
+    
+    # Score each ICD code
     icd_scores = []
+    suggested_icd = None
+    confidence = 0.6
     
     for icd_entry in condition_icd_codes:
         icd_description_lower = icd_entry['icd_description'].lower()
         score = 0.0
         matched_terms = []
         
-        # Extract significant medical terms from ICD description (longer than 5 chars)
+        # Check context rules for this condition
+        if condition_name in context_rules:
+            for context_pattern, preferred_icds in context_rules[condition_name].items():
+                if re.search(context_pattern, clinical_text_lower):
+                    # Check if this ICD code matches the preferred pattern
+                    for pref in preferred_icds:
+                        if icd_entry['icd_code'].startswith(pref.rstrip('.')):
+                            score += 10.0  # High score for context match
+                            matched_terms.append(f"context:{context_pattern}")
+                            break
+        
+        # Extract significant medical terms from ICD description
         icd_terms = [
             word for word in re.findall(r'\b[a-z]{5,}\b', icd_description_lower)
             if word not in {'without', 'disease', 'syndrome', 'disorder', 'unspecified', 
@@ -514,21 +815,13 @@ def suggest_icd_code(condition_match: Dict, clinical_text: str) -> Dict:
                 score += 1.0
                 matched_terms.append(term)
         
-        # Bonus for specific keywords
+        # Bonus for high-priority specific keywords
         specific_keywords = {
-            'ketoacidosis': 2.0,
-            'complications': 1.5,
-            'nephropathy': 2.0,
-            'neuropathy': 2.0,
-            'retinopathy': 2.0,
-            'gangrene': 2.0,
-            'ulcer': 1.5,
-            'coma': 2.0,
-            'hypoglycemia': 1.5,
-            'hyperglycemia': 1.5,
-            'renal': 1.5,
-            'cardiac': 1.5,
-            'peripheral': 1.0
+            'ketoacidosis': 3.0, 'coma': 3.0, 'stage 5': 3.0, 'stage 4': 2.5,
+            'nephropathy': 2.0, 'neuropathy': 2.0, 'retinopathy': 2.0,
+            'gangrene': 2.0, 'status asthmaticus': 2.5,
+            'complications': 1.5, 'ulcer': 1.5,
+            'hypertensive': 1.5, 'renal': 1.5, 'cardiac': 1.5
         }
         
         for keyword, bonus in specific_keywords.items():
@@ -538,36 +831,136 @@ def suggest_icd_code(condition_match: Dict, clinical_text: str) -> Dict:
                     matched_terms.append(keyword)
         
         # Calculate confidence based on match strength
-        confidence = min(score / max(len(icd_terms), 1), 1.0) if icd_terms else 0.5
+        conf = min(score / 10.0, 1.0) if score > 0 else 0.5
         
         icd_scores.append({
             'icd_code': icd_entry['icd_code'],
             'icd_description': icd_entry['icd_description'],
             'score': score,
-            'confidence': confidence,
+            'confidence': conf,
             'matched_terms': matched_terms
         })
     
     # Sort by score
     icd_scores.sort(key=lambda x: x['score'], reverse=True)
     
-    # If top score is 0, use the current ICD code as default
+    # If top score is 0, look for "unspecified" ICD as fallback
     if icd_scores[0]['score'] == 0:
+        for icd in condition_icd_codes:
+            if 'unspecified' in icd['icd_description'].lower():
+                suggested_icd = icd['icd_code']
+                confidence = 0.65
+                break
+        
+        if suggested_icd is None:
+            suggested_icd = current_icd
+            confidence = 0.60
+        
+        alternatives = [entry['icd_code'] for entry in icd_scores[:4] 
+                       if entry['icd_code'] != suggested_icd]
+        
         return {
-            'suggested_icd_code': current_icd,
-            'icd_confidence': 0.60,  # Lower confidence when no specific match
-            'alternative_icd_codes': [entry['icd_code'] for entry in icd_scores[1:4]]
+            'suggested_icd_code': suggested_icd,
+            'icd_confidence': confidence,
+            'alternative_icd_codes': alternatives
         }
     
     # Return top suggestion with alternatives
     best_match = icd_scores[0]
-    alternatives = [entry['icd_code'] for entry in icd_scores[1:4] if entry['icd_code'] != best_match['icd_code']]
+    alternatives = [entry['icd_code'] for entry in icd_scores[1:5] 
+                   if entry['icd_code'] != best_match['icd_code']]
     
     return {
         'suggested_icd_code': best_match['icd_code'],
-        'icd_confidence': min(best_match['confidence'] * 0.9, 0.95),  # Cap at 0.95
+        'icd_confidence': min(best_match['confidence'] * 0.95, 0.98),  # Cap at 0.98
         'alternative_icd_codes': alternatives
     }
+
+
+def calculate_enhanced_confidence(match: Dict, clinical_text: str, keyword_matches: List[Dict]) -> float:
+    """
+    Calculate enhanced confidence score based on multiple factors
+    
+    Factors considered:
+    1. Is it directly mentioned (confirmed)?
+    2. Number of supporting keywords
+    3. Presence of condition-specific measurements/tests
+    4. Quality of keyword matches
+    
+    Args:
+        match: Condition match dictionary
+        clinical_text: Clinical note text
+        keyword_matches: List of keyword matches for this condition
+        
+    Returns:
+        Enhanced confidence score (0.0 to 0.98)
+    """
+    base_score = match.get('similarity_score', 0.7)
+    
+    # Factor 1: Is it directly mentioned? (highest confidence)
+    if match.get('is_confirmed', False):
+        confidence = 0.95
+    else:
+        confidence = base_score
+    
+    # Factor 2: Number of supporting keywords
+    keyword_count = len(keyword_matches)
+    if keyword_count >= 5:
+        confidence *= 1.10  # 10% boost for many supporting keywords
+    elif keyword_count >= 3:
+        confidence *= 1.05  # 5% boost for multiple keywords
+    elif keyword_count == 1:
+        confidence *= 0.95  # Slight penalty for single keyword match
+    
+    # Factor 3: Presence of specific measurements/tests
+    condition = match['condition']
+    clinical_lower = clinical_text.lower()
+    
+    measurement_indicators = {
+        'Diabetes Mellitus Type 1': ['hba1c', 'blood glucose', 'insulin', 'glucose level', 'a1c'],
+        'Diabetes Mellitus Type 2': ['hba1c', 'blood glucose', 'metformin', 'glucose level', 'a1c'],
+        'Hypertension': ['bp', 'blood pressure', 'systolic', 'diastolic', 'mmhg'],
+        'Cardiac Failure': ['ejection fraction', 'bnp', 'echocardiogram', 'echo', 'lvef'],
+        'Chronic Renal Disease': ['creatinine', 'egfr', 'proteinuria', 'gfr', 'urea'],
+        'Hypothyroidism': ['tsh', 't4', 'thyroid', 't3', 'thyroid function'],
+        'Asthma': ['peak flow', 'spirometry', 'fev1', 'pefr'],
+        'Chronic Obstructive Pulmonary Disease': ['spirometry', 'fev1', 'oxygen', 'spo2', 'o2'],
+        'Hyperlipidaemia': ['cholesterol', 'ldl', 'hdl', 'lipid panel', 'triglyceride'],
+        'Cardiomyopathy': ['ejection fraction', 'echo', 'lvef', 'echocardiogram'],
+        'Epilepsy': ['eeg', 'electroencephalogram', 'seizure frequency'],
+        'Haemophilia': ['factor level', 'factor viii', 'factor ix', 'aptt', 'ptt']
+    }
+    
+    if condition in measurement_indicators:
+        measurement_found = any(
+            indicator in clinical_lower 
+            for indicator in measurement_indicators[condition]
+        )
+        if measurement_found:
+            confidence *= 1.15  # 15% boost for objective measurements
+    
+    # Factor 4: Quality of keyword matches (average similarity)
+    if keyword_matches and not match.get('is_confirmed', False):
+        avg_keyword_score = sum(kw.get('similarity_score', 0) for kw in keyword_matches) / len(keyword_matches)
+        if avg_keyword_score >= 0.85:
+            confidence *= 1.08  # High quality matches
+        elif avg_keyword_score < 0.70:
+            confidence *= 0.92  # Lower quality matches
+    
+    # Factor 5: Check for symptom indicators
+    symptom_indicators = get_condition_symptom_indicators()
+    if condition in symptom_indicators:
+        symptom_count = sum(
+            1 for symptom in symptom_indicators[condition]
+            if symptom.lower() in clinical_lower
+        )
+        if symptom_count >= 3:
+            confidence *= 1.12  # Multiple symptoms present
+        elif symptom_count >= 2:
+            confidence *= 1.06  # Some symptoms present
+    
+    # Cap at 0.98 (never 100% certain without human review)
+    return min(confidence, 0.98)
 
 
 def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text="", threshold=0.65):
@@ -616,19 +1009,52 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         print(f"   Found {confirmed_count} confirmed condition(s). Limiting semantic suggestions.")
         
         # Define related condition pairs (comorbidities often found together)
+        # Updated with more medically accurate relationships based on clinical evidence
         related_conditions = {
-            'Hypertension': ['Cardiac Failure', 'Chronic Renal Disease', 'Cardiomyopathy', 'Diabetes Mellitus Type 2', 'Hypothyroidism'],
-            'Diabetes Mellitus Type 1': ['Chronic Renal Disease', 'Hypertension', 'Hyperlipidaemia', 'Hypothyroidism'],
-            'Diabetes Mellitus Type 2': ['Hypertension', 'Hyperlipidaemia', 'Chronic Renal Disease', 'Cardiac Failure', 'Hypothyroidism'],
-            'Cardiac Failure': ['Hypertension', 'Cardiomyopathy', 'Chronic Renal Disease', 'Hypothyroidism'],
-            'Cardiomyopathy': ['Cardiac Failure', 'Hypertension'],
-            'Chronic Renal Disease': ['Hypertension', 'Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2', 'Cardiac Failure'],
-            'Hyperlipidaemia': ['Hypertension', 'Diabetes Mellitus Type 2', 'Hypothyroidism'],
-            'Asthma': ['Chronic Obstructive Pulmonary Disease'],  # COPD can coexist with asthma
-            'Haemophilia': [],  # Haemophilia typically stands alone
-            'Chronic Obstructive Pulmonary Disease': ['Cardiac Failure', 'Hypertension', 'Asthma'],  # COPD often found with cardiovascular issues
-            'Epilepsy': [],  # Epilepsy typically stands alone
-            'Hypothyroidism': ['Hypertension', 'Diabetes Mellitus Type 2', 'Hyperlipidaemia']  # Thyroid issues often accompany metabolic conditions
+            'Hypertension': [
+                'Cardiac Failure', 'Chronic Renal Disease', 'Cardiomyopathy', 
+                'Diabetes Mellitus Type 2', 'Hypothyroidism', 'Hyperlipidaemia'
+            ],
+            'Diabetes Mellitus Type 1': [
+                'Chronic Renal Disease', 'Hypertension', 'Hyperlipidaemia', 
+                'Hypothyroidism', 'Cardiac Failure'
+            ],
+            'Diabetes Mellitus Type 2': [
+                'Hypertension', 'Hyperlipidaemia', 'Chronic Renal Disease', 
+                'Cardiac Failure', 'Hypothyroidism', 'Chronic Obstructive Pulmonary Disease'
+            ],
+            'Cardiac Failure': [
+                'Hypertension', 'Cardiomyopathy', 'Chronic Renal Disease', 
+                'Hypothyroidism', 'Diabetes Mellitus Type 2', 'Hyperlipidaemia',
+                'Chronic Obstructive Pulmonary Disease'
+            ],
+            'Cardiomyopathy': [
+                'Cardiac Failure', 'Hypertension', 'Diabetes Mellitus Type 2',
+                'Hyperlipidaemia'
+            ],
+            'Chronic Renal Disease': [
+                'Hypertension', 'Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2', 
+                'Cardiac Failure', 'Hyperlipidaemia', 'Hypothyroidism'
+            ],
+            'Hyperlipidaemia': [
+                'Hypertension', 'Diabetes Mellitus Type 2', 'Hypothyroidism',
+                'Cardiac Failure', 'Cardiomyopathy', 'Chronic Renal Disease'
+            ],
+            'Asthma': [
+                'Chronic Obstructive Pulmonary Disease', 'Hyperlipidaemia'  # Overlap syndrome
+            ],
+            'Haemophilia': [],  # Typically standalone condition
+            'Chronic Obstructive Pulmonary Disease': [
+                'Cardiac Failure', 'Hypertension', 'Diabetes Mellitus Type 2',
+                'Asthma', 'Hyperlipidaemia'  # COPD often found with cardiovascular and metabolic issues
+            ],
+            'Epilepsy': [
+                'Hypothyroidism'  # Thyroid disorders can affect seizure control
+            ],
+            'Hypothyroidism': [
+                'Hypertension', 'Diabetes Mellitus Type 2', 'Hyperlipidaemia',
+                'Cardiac Failure', 'Chronic Renal Disease'  # Common metabolic associations
+            ]
         }
         
         # Get related conditions for the confirmed ones
@@ -775,7 +1201,56 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         icd_suggestion = suggest_icd_code(condition_match, clinical_text)
         condition_match.update(icd_suggestion)
     
-    # Sort final result by score
+    # Apply enhanced confidence scoring to refine similarity scores
+    for condition_match in result_list:
+        condition_name = condition_match['condition']
+        keyword_matches = condition_match.get('triggering_keywords', [])
+        
+        # Calculate enhanced confidence
+        enhanced_score = calculate_enhanced_confidence(
+            condition_match, 
+            clinical_text, 
+            keyword_matches
+        )
+        
+        # Update the similarity score with enhanced confidence
+        condition_match['similarity_score'] = enhanced_score
+        
+        # Also update match explanation to reflect confidence factors
+        if condition_match.get('is_confirmed', False):
+            condition_match['match_explanation'] = "Direct mention in clinical note (high confidence)"
+        else:
+            factors = []
+            if len(keyword_matches) >= 3:
+                factors.append("multiple keyword matches")
+            
+            # Check for measurements
+            condition = condition_match['condition']
+            clinical_lower = clinical_text.lower()
+            measurement_indicators = {
+                'Diabetes Mellitus Type 1': ['hba1c', 'blood glucose', 'insulin'],
+                'Diabetes Mellitus Type 2': ['hba1c', 'blood glucose', 'metformin'],
+                'Hypertension': ['bp', 'blood pressure', 'systolic', 'diastolic'],
+                'Cardiac Failure': ['ejection fraction', 'bnp', 'echocardiogram'],
+                'Chronic Renal Disease': ['creatinine', 'egfr', 'proteinuria'],
+                'Hypothyroidism': ['tsh', 't4', 'thyroid'],
+                'Asthma': ['peak flow', 'spirometry', 'fev1'],
+                'Chronic Obstructive Pulmonary Disease': ['spirometry', 'fev1', 'oxygen'],
+                'Hyperlipidaemia': ['cholesterol', 'ldl', 'hdl'],
+                'Cardiomyopathy': ['ejection fraction', 'echo', 'lvef'],
+                'Epilepsy': ['eeg', 'electroencephalogram'],
+                'Haemophilia': ['factor level', 'factor viii', 'factor ix']
+            }
+            if condition in measurement_indicators:
+                if any(ind in clinical_lower for ind in measurement_indicators[condition]):
+                    factors.append("objective measurements present")
+            
+            if factors:
+                condition_match['match_explanation'] = f"Semantic match based on clinical terminology ({', '.join(factors)})"
+            else:
+                condition_match['match_explanation'] = "Semantic match based on clinical terminology"
+    
+    # Sort final result by enhanced score
     result_list.sort(key=lambda x: x['similarity_score'], reverse=True)
     
     # Return 3-5 conditions
