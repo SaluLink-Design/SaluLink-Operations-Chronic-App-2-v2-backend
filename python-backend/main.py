@@ -61,9 +61,6 @@ class MatchedConditionResponse(BaseModel):
     icd_description: str
     similarity_score: float
     is_confirmed: bool = False  # True if condition is explicitly mentioned in the note
-    evidence_level: str = "unknown"  # NEW: 'confirmed', 'strong', 'weak', 'insufficient'
-    evidence_score: float = 0.0  # NEW: 0.0-1.0 ratio of required evidence present
-    missing_evidence: List[str] = []  # NEW: What diagnostic evidence is missing
     triggering_keywords: List[KeywordMatch] = []  # Top keywords that triggered this match
     match_explanation: str = ""  # Explanation of how the match was made
     suggested_icd_code: Optional[str] = None  # Most relevant ICD code
@@ -469,145 +466,6 @@ def get_condition_symptom_indicators():
             'myxedema', 'hashimoto', 'underactive thyroid', 'thyroid deficiency'
         ]
     }
-
-
-def get_required_evidence_indicators():
-    """
-    Defines REQUIRED diagnostic evidence for each condition.
-    Conditions should NOT be suggested without these key indicators.
-    
-    This is critical for preventing false comorbidity inflation.
-    For example, hypertension should not be suggested just because
-    a patient has "headache" - BP readings are required.
-    """
-    return {
-        'Hypertension': {
-            'required': ['blood pressure', 'bp', 'systolic', 'diastolic', 'mmhg', 'hypertensive'],
-            'medications': ['amlodipine', 'lisinopril', 'losartan', 'enalapril', 'valsartan', 'ramipril']
-        },
-        'Diabetes Mellitus Type 1': {
-            'required': ['glucose', 'hba1c', 'a1c', 'insulin', 'blood sugar', 'diabetic', 'diabetes'],
-            'medications': ['insulin', 'lantus', 'novolog', 'humalog']
-        },
-        'Diabetes Mellitus Type 2': {
-            'required': ['glucose', 'hba1c', 'a1c', 'blood sugar', 'diabetic', 'diabetes', 'metformin'],
-            'medications': ['metformin', 'glyburide', 'glipizide', 'sitagliptin']
-        },
-        'Asthma': {
-            'required': ['wheezing', 'bronchospasm', 'asthma', 'asthmatic', 'inhaler', 'peak flow', 'spirometry'],
-            'medications': ['albuterol', 'salbutamol', 'fluticasone', 'inhaler']
-        },
-        'Cardiac Failure': {
-            'required': ['heart failure', 'chf', 'ejection fraction', 'edema', 'dyspnea', 'bnp', 'cardiac'],
-            'medications': ['furosemide', 'lasix', 'spironolactone', 'carvedilol']
-        },
-        'Chronic Renal Disease': {
-            'required': ['creatinine', 'egfr', 'gfr', 'renal', 'kidney', 'ckd', 'nephropathy', 'dialysis'],
-            'medications': ['dialysis', 'erythropoietin']
-        },
-        'Epilepsy': {
-            'required': ['seizure', 'epilep', 'convulsion', 'eeg', 'tonic', 'clonic', 'postictal'],
-            'medications': ['levetiracetam', 'phenytoin', 'valproic', 'lamotrigine', 'carbamazepine']
-        },
-        'Chronic Obstructive Pulmonary Disease': {
-            'required': ['copd', 'emphysema', 'chronic bronchitis', 'fev1', 'spirometry', 'airflow'],
-            'medications': ['tiotropium', 'ipratropium', 'oxygen']
-        },
-        'Hypothyroidism': {
-            'required': ['tsh', 'thyroid', 't4', 't3', 'hypothyroid', 'myxedema'],
-            'medications': ['levothyroxine', 'synthroid']
-        },
-        'Cardiomyopathy': {
-            'required': ['cardiomyopathy', 'lvef', 'ejection fraction', 'echocardiogram', 'ventricular'],
-            'medications': []
-        },
-        'Hyperlipidaemia': {
-            'required': ['cholesterol', 'ldl', 'hdl', 'lipid', 'triglyceride', 'hyperlipid', 'dyslipid'],
-            'medications': ['statin', 'atorvastatin', 'simvastatin', 'rosuvastatin']
-        },
-        'Haemophilia': {
-            'required': ['hemophilia', 'haemophilia', 'factor viii', 'factor ix', 'bleeding', 'clotting'],
-            'medications': []
-        }
-    }
-
-
-def check_evidence_level(condition_name: str, clinical_text: str) -> tuple:
-    """
-    Check what level of evidence exists for a condition.
-    Returns: (evidence_level, evidence_score, missing_evidence)
-    
-    Evidence Levels:
-    - 'confirmed': Required evidence + direct mention
-    - 'strong': Required evidence present (key indicators OR 30%+ of indicators)
-    - 'weak': Only indirect/symptom evidence (10-29%)
-    - 'insufficient': No diagnostic evidence (<10%)
-    
-    This function is CRITICAL for preventing false comorbidity inflation.
-    Example: Hypertension should not be suggested in an epilepsy note
-    just because "headache" is mentioned. BP readings are required.
-    """
-    clinical_lower = clinical_text.lower()
-    required_indicators = get_required_evidence_indicators()
-    
-    if condition_name not in required_indicators:
-        return ('unknown', 0.5, [])
-    
-    evidence_data = required_indicators[condition_name]
-    required_evidence = evidence_data['required']
-    medications = evidence_data.get('medications', [])
-    
-    # Define CRITICAL indicators that are highly specific for each condition
-    # If these are present, evidence is automatically "strong"
-    critical_indicators = {
-        'Epilepsy': ['seizure', 'postictal', 'eeg'],
-        'Hypertension': ['blood pressure', 'bp', 'mmhg', 'systolic', 'diastolic'],
-        'Diabetes Mellitus Type 1': ['hba1c', 'insulin', 'diabetic'],
-        'Diabetes Mellitus Type 2': ['hba1c', 'glucose', 'diabetic', 'metformin'],
-        'Asthma': ['wheezing', 'asthma', 'inhaler'],
-        'Cardiac Failure': ['heart failure', 'chf', 'ejection fraction'],
-        'Chronic Renal Disease': ['creatinine', 'egfr', 'dialysis', 'renal'],
-        'Chronic Obstructive Pulmonary Disease': ['copd', 'emphysema', 'fev1'],
-        'Hypothyroidism': ['tsh', 'thyroid'],
-        'Hyperlipidaemia': ['cholesterol', 'ldl', 'lipid'],
-        'Cardiomyopathy': ['cardiomyopathy', 'ejection fraction'],
-        'Haemophilia': ['hemophilia', 'haemophilia', 'factor viii', 'factor ix']
-    }
-    
-    # Check for critical indicators (high specificity)
-    critical_found = 0
-    if condition_name in critical_indicators:
-        for indicator in critical_indicators[condition_name]:
-            if indicator in clinical_lower:
-                critical_found += 1
-    
-    # Check for required evidence
-    required_found = sum(1 for term in required_evidence if term in clinical_lower)
-    medication_found = sum(1 for med in medications if med in clinical_lower)
-    
-    total_possible = len(required_evidence)
-    evidence_ratio = required_found / total_possible if total_possible > 0 else 0
-    
-    # Add medication bonus (medications are strong evidence)
-    if medication_found > 0:
-        evidence_ratio = min(evidence_ratio + 0.25, 1.0)
-    
-    # Determine evidence level
-    # STRONG if: critical indicators present OR 30%+ of evidence OR medications present
-    if critical_found >= 2 or evidence_ratio >= 0.3 or medication_found > 0:
-        evidence_level = 'strong'
-        evidence_score = max(evidence_ratio, 0.6)  # Minimum 0.6 for strong
-    elif critical_found >= 1 or evidence_ratio >= 0.10:  # Single critical indicator or 10%+ evidence
-        evidence_level = 'weak'
-        evidence_score = evidence_ratio * 0.6  # Penalty for weak evidence
-    else:  # No critical indicators and < 10%
-        evidence_level = 'insufficient'
-        evidence_score = 0.0
-    
-    # Identify missing evidence (show first 5 for clarity)
-    missing = [term for term in required_evidence[:5] if term not in clinical_lower]
-    
-    return (evidence_level, evidence_score, missing)
 
 
 def find_direct_condition_matches(clinical_text):
@@ -1297,32 +1155,6 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
                 if condition_name not in suggested_conditions or best_match['similarity_score'] > suggested_conditions[condition_name]['similarity_score']:
                     suggested_conditions[condition_name] = best_match
     
-    # CRITICAL ENHANCEMENT: Check for conditions with STRONG evidence even if semantic score is moderate
-    # This prevents missing conditions like epilepsy when the note describes seizures but doesn't use the word "epilepsy"
-    if confirmed_count == 0:  # Only do this if no confirmed conditions
-        print(f"   Checking for conditions with strong evidence regardless of semantic score...")
-        all_condition_names = set(entry['condition'] for entry in chronic_condition_embeddings)
-        
-        for condition_name in all_condition_names:
-            if condition_name not in suggested_conditions:  # Don't recheck already suggested conditions
-                evidence_level, evidence_score, missing = check_evidence_level(condition_name, clinical_text)
-                
-                # If condition has STRONG evidence, add it even if semantic matching was weak
-                if evidence_level == 'strong' and evidence_score >= 0.5:
-                    # Find a representative ICD code for this condition
-                    for entry in chronic_condition_embeddings:
-                        if entry['condition'] == condition_name:
-                            suggested_conditions[condition_name] = {
-                                'condition': entry['condition'],
-                                'icd_code': entry['icd_code'],
-                                'icd_description': entry['icd_description'],
-                                'similarity_score': 0.70 + (evidence_score * 0.15),  # Base score + evidence bonus
-                                'match_type': 'evidence-based',
-                                'is_confirmed': False
-                            }
-                            print(f"   → Added {condition_name} based on strong evidence (evidence score: {evidence_score:.2f})")
-                            break
-    
     # Calculate average score for suggested conditions to improve ranking
     for condition_name, match in suggested_conditions.items():
         if condition_name in condition_scores:
@@ -1339,34 +1171,10 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
     remaining_slots = 5 - len(result_list)
     if remaining_slots > 0:
         for suggestion in sorted_suggestions[:remaining_slots]:
-            # CRITICAL FIX: Check evidence level for this suggestion
-            evidence_level, evidence_score, missing = check_evidence_level(
-                suggestion['condition'], 
-                clinical_text
-            )
-            
-            # CRITICAL: Require evidence for suggestions to prevent false comorbidities
-            # Example: Don't suggest Hypertension in epilepsy notes just because "headache" is mentioned
-            if evidence_level == 'insufficient':
-                # Skip conditions with no diagnostic evidence
-                print(f"   ✗ EXCLUDED {suggestion['condition']} - insufficient evidence (score: {suggestion['similarity_score']:.3f}, missing: {missing[:2]})")
-                continue
-            
-            # Apply evidence-based threshold
-            if evidence_level == 'strong' and suggestion['similarity_score'] >= 0.70:
-                suggestion['evidence_level'] = evidence_level
-                suggestion['evidence_score'] = evidence_score
-                suggestion['missing_evidence'] = missing
+            # Only add suggestions with reasonably high scores
+            if suggestion['similarity_score'] >= 0.70:
                 result_list.append(suggestion)
-                print(f"   → Suggested: {suggestion['condition']} (score: {suggestion['similarity_score']:.3f}, evidence: {evidence_level})")
-            elif evidence_level == 'weak' and suggestion['similarity_score'] >= 0.80:
-                # Higher threshold for weak evidence (requires stronger semantic match)
-                suggestion['evidence_level'] = evidence_level
-                suggestion['evidence_score'] = evidence_score
-                suggestion['missing_evidence'] = missing
-                suggestion['similarity_score'] *= 0.85  # Penalty for weak evidence
-                result_list.append(suggestion)
-                print(f"   → Suggested (weak evidence): {suggestion['condition']} (adjusted score: {suggestion['similarity_score']:.3f})")
+                print(f"   → Suggested related condition: {suggestion['condition']} (score: {suggestion['similarity_score']:.3f})")
     
     # Attach triggering keywords to each condition
     for condition_match in result_list:
@@ -1387,19 +1195,6 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
             condition_match['match_explanation'] = "Direct mention in clinical note"
         else:
             condition_match['match_explanation'] = "Semantic match based on clinical terminology"
-    
-    # Check evidence level for all conditions (including confirmed ones)
-    # This provides transparency about what diagnostic evidence is present
-    for condition_match in result_list:
-        if 'evidence_level' not in condition_match:
-            evidence_level, evidence_score, missing = check_evidence_level(
-                condition_match['condition'],
-                clinical_text
-            )
-            # Confirmed conditions get 'confirmed' level, others get their calculated level
-            condition_match['evidence_level'] = 'confirmed' if condition_match.get('is_confirmed') else evidence_level
-            condition_match['evidence_score'] = evidence_score if not condition_match.get('is_confirmed') else 1.0
-            condition_match['missing_evidence'] = missing if not condition_match.get('is_confirmed') else []
     
     # Add ICD code suggestions for each condition
     for condition_match in result_list:
@@ -1556,9 +1351,6 @@ async def analyze_clinical_note(request: AnalysisRequest):
                     icd_description=m['icd_description'],
                     similarity_score=m['similarity_score'],
                     is_confirmed=m.get('is_confirmed', False),
-                    evidence_level=m.get('evidence_level', 'unknown'),  # NEW: Evidence level
-                    evidence_score=m.get('evidence_score', 0.0),  # NEW: Evidence score
-                    missing_evidence=m.get('missing_evidence', []),  # NEW: Missing evidence list
                     triggering_keywords=[
                         KeywordMatch(
                             keyword=kw['keyword'],
