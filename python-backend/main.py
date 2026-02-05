@@ -354,37 +354,78 @@ def detect_negation_context(clinical_text, condition_term):
     Returns: (is_negated: bool, context: str)
     
     This is critical to avoid false positives when conditions are mentioned but ruled out.
+    
+    ENHANCED: Also checks for symptom-based negations (e.g., "denies seizures" for epilepsy)
     """
     import re
     
-    # Negation patterns - comprehensive list of medical negation terms
-    negation_patterns = [
-        r'\bno\s+(?:history\s+(?:of\s+)?)?' + re.escape(condition_term),
-        r'\bdenies\s+' + re.escape(condition_term),
-        r'\brules?\s+out\s+' + re.escape(condition_term),
-        r'\br/o\s+' + re.escape(condition_term),
-        r'\bruled\s+out\s+' + re.escape(condition_term),
-        r'\bnegative\s+for\s+' + re.escape(condition_term),
-        r'\bwithout\s+(?:evidence\s+(?:of\s+)?)?' + re.escape(condition_term),
-        r'\babsent\s+' + re.escape(condition_term),
-        r'\bnot\s+consistent\s+with\s+' + re.escape(condition_term),
-        r'\bno\s+signs?\s+of\s+' + re.escape(condition_term),
-        r'\bunlikely\s+(?:to\s+be\s+)?' + re.escape(condition_term),
-        r'\bdiscontinued\s+' + re.escape(condition_term),
-        r'\bresolved\s+' + re.escape(condition_term),
-        r'\bfree\s+(?:of|from)\s+' + re.escape(condition_term),
-        r'\bexclude[ds]?\s+' + re.escape(condition_term),
-        r'\bnot\s+(?:have|has|having)\s+' + re.escape(condition_term),
-        r'\bno\s+longer\s+(?:has|have|having)\s+' + re.escape(condition_term)
-    ]
+    # Condition-specific symptom keywords that indicate the condition
+    condition_symptom_map = {
+        'epilepsy': ['seizure', 'seizures', 'convulsion', 'convulsions', 'fits', 'epileptic'],
+        'diabetes': ['hyperglycemia', 'hyperglycemic', 'polyuria', 'polydipsia'],
+        'hypertension': ['elevated blood pressure', 'high blood pressure', 'elevated bp', 'hypertensive'],
+        'asthma': ['wheezing', 'bronchospasm', 'asthmatic'],
+        'cardiac failure': ['heart failure', 'chf', 'cardiac decompensation'],
+        'haemophilia': ['bleeding disorder', 'clotting disorder', 'factor deficiency'],
+        'hypothyroidism': ['thyroid deficiency', 'underactive thyroid'],
+        'copd': ['chronic bronchitis', 'emphysema'],
+        'chronic renal disease': ['kidney failure', 'renal failure', 'kidney disease'],
+        'cardiomyopathy': ['cardiomyopathic'],
+        'hyperlipidaemia': ['high cholesterol', 'dyslipidemia']
+    }
     
     clinical_text_lower = clinical_text.lower()
     condition_term_lower = condition_term.lower()
     
+    # Negation patterns - comprehensive list of medical negation terms
+    # Allow up to 10 words between negation term and condition (e.g., "denies symptoms, conditions, or X")
+    negation_patterns = [
+        r'\bno\s+(?:history\s+(?:of\s+)?)?' + re.escape(condition_term),
+        r'\bdenies\s+(?:any\s+)?(?:history\s+(?:of\s+)?)?(?:\w+[,\s]+){0,10}?' + re.escape(condition_term),
+        r'\brules?\s+out\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\br/o\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bruled\s+out\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bnegative\s+for\s+(?:\w+[,\s]+){0,10}?' + re.escape(condition_term),
+        r'\bwithout\s+(?:evidence\s+(?:of\s+)?)?(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\babsent\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bnot\s+consistent\s+with\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bno\s+signs?\s+of\s+(?:\w+[,\s]+){0,10}?' + re.escape(condition_term),
+        r'\bunlikely\s+(?:to\s+be\s+)?(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bdiscontinued\s+(?:\w+[,\s]+){0,3}?' + re.escape(condition_term),
+        r'\bresolved\s+(?:\w+[,\s]+){0,3}?' + re.escape(condition_term),
+        r'\bfree\s+(?:of|from)\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bexclude[ds]?\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bnot\s+(?:have|has|having)\s+(?:\w+[,\s]+){0,5}?' + re.escape(condition_term),
+        r'\bno\s+longer\s+(?:has|have|having)\s+(?:\w+[,\s]+){0,3}?' + re.escape(condition_term)
+    ]
+    
+    # Check direct condition term negation
     for pattern in negation_patterns:
         match = re.search(pattern, clinical_text_lower, re.IGNORECASE)
         if match:
             return (True, match.group())
+    
+    # Check symptom-based negation (e.g., "denies seizures" for epilepsy)
+    # Find the base condition name for lookup
+    for base_condition, symptoms in condition_symptom_map.items():
+        if base_condition in condition_term_lower or condition_term_lower in base_condition:
+            # Check if any of the symptoms are negated
+            for symptom in symptoms:
+                # Allow up to 10 intervening words for lists (e.g., "denies symptoms, conditions, or X")
+                symptom_negation_patterns = [
+                    r'\bno\s+(?:history\s+(?:of\s+)?)?(?:\w+[,\s]+){0,10}?' + re.escape(symptom),
+                    r'\bdenies\s+(?:any\s+)?(?:history\s+(?:of\s+)?)?(?:\w+[,\s]+){0,10}?' + re.escape(symptom),
+                    r'\bnegative\s+for\s+(?:\w+[,\s]+){0,10}?' + re.escape(symptom),
+                    r'\bwithout\s+(?:\w+[,\s]+){0,10}?' + re.escape(symptom),
+                    r'\bno\s+signs?\s+of\s+(?:\w+[,\s]+){0,10}?' + re.escape(symptom),
+                    r'\brules?\s+out\s+(?:\w+[,\s]+){0,5}?' + re.escape(symptom),
+                    r'\babsent\s+(?:\w+[,\s]+){0,5}?' + re.escape(symptom)
+                ]
+                
+                for pattern in symptom_negation_patterns:
+                    match = re.search(pattern, clinical_text_lower, re.IGNORECASE)
+                    if match:
+                        return (True, match.group())
     
     return (False, None)
 
@@ -595,6 +636,7 @@ def find_direct_condition_matches(clinical_text):
     
     # Strategy 2: Check for condition aliases (also CONFIRMED)
     for canonical_condition, aliases in condition_aliases.items():
+        alias_found = False
         for alias in aliases:
             pattern = r'\b' + re.escape(alias) + r'\b'
             if re.search(pattern, clinical_text_lower):
@@ -602,6 +644,7 @@ def find_direct_condition_matches(clinical_text):
                 is_negated, negation_context = detect_negation_context(clinical_text, alias)
                 if is_negated:
                     print(f"   ⚠ Skipping negated alias: {alias} -> {canonical_condition} (context: '{negation_context}')")
+                    alias_found = True  # Mark as found but negated
                     continue  # Skip this alias - it's negated
                 
                 # Find the canonical condition in our database
@@ -617,7 +660,12 @@ def find_direct_condition_matches(clinical_text):
                                 'match_type': 'confirmed',
                                 'is_confirmed': True  # CONFIRMED - alias explicitly mentioned
                             }
-                break  # Stop checking aliases once found
+                alias_found = True
+                break  # Stop checking aliases once found (whether negated or confirmed)
+        
+        # If we found a negated alias, skip checking other aliases for this condition
+        if alias_found:
+            continue
     
     # Strategy 3: Check for specific ICD description terms (for subtypes of confirmed conditions)
     # Only use this to find specific ICD codes for already-confirmed conditions
@@ -963,20 +1011,94 @@ def calculate_enhanced_confidence(match: Dict, clinical_text: str, keyword_match
     return min(confidence, 0.98)
 
 
+def validate_keyword_quality(keyword_matches: List[Dict], condition_name: str, clinical_text: str) -> bool:
+    """
+    Validate that a condition has sufficient high-quality keyword matches.
+    
+    Requirements:
+    1. At least 3 distinct clinical keywords
+    2. Keywords must be condition-specific, not generic terms
+    3. Average keyword similarity should be reasonable (>0.70)
+    
+    Args:
+        keyword_matches: List of keyword matches for this condition
+        condition_name: Name of the condition being validated
+        clinical_text: Original clinical note text
+        
+    Returns:
+        True if keyword quality is sufficient, False otherwise
+    """
+    if not keyword_matches or len(keyword_matches) < 3:
+        return False
+    
+    # Generic medical terms that don't indicate specific conditions
+    generic_terms = {
+        'patient', 'diagnosis', 'diagnosed', 'medication', 'treatment', 
+        'disease', 'disorder', 'condition', 'symptoms', 'history',
+        'medical', 'clinical', 'therapy', 'medicine', 'drug',
+        'present', 'presents', 'reported', 'reports', 'noted',
+        'complaint', 'episode', 'episodes', 'current', 'recent',
+        'direct_mention'  # This is okay for confirmed conditions
+    }
+    
+    # Get condition-specific indicators
+    symptom_indicators = get_condition_symptom_indicators()
+    condition_specific_terms = set()
+    if condition_name in symptom_indicators:
+        condition_specific_terms = {term.lower() for term in symptom_indicators[condition_name]}
+    
+    # Count valid (non-generic) keywords
+    valid_keywords = []
+    clinical_lower = clinical_text.lower()
+    
+    for kw in keyword_matches:
+        keyword = kw['keyword'].lower()
+        
+        # Direct mention is always valid for confirmed conditions
+        if keyword == 'direct_mention':
+            valid_keywords.append(kw)
+            continue
+        
+        # Skip generic terms unless they're condition-specific
+        if keyword in generic_terms and keyword not in condition_specific_terms:
+            continue
+        
+        # Check if keyword actually appears in clinical text (validates it's real)
+        if len(keyword) >= 4 and keyword in clinical_lower:
+            valid_keywords.append(kw)
+        # Or if it's a known condition-specific term
+        elif keyword in condition_specific_terms:
+            valid_keywords.append(kw)
+    
+    # Require at least 3 valid keywords
+    if len(valid_keywords) < 3:
+        return False
+    
+    # Check average similarity of valid keywords
+    avg_similarity = sum(kw['similarity_score'] for kw in valid_keywords) / len(valid_keywords)
+    if avg_similarity < 0.70:
+        return False
+    
+    return True
+
+
 def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text="", threshold=0.65):
     """
     Authi 1.0 - Condition Matching Component
     
-    NEW LOGIC:
+    ENHANCED ACCURACY LOGIC:
     - If conditions are explicitly mentioned in the note (CONFIRMED), prioritize those
     - Only suggest additional conditions if they are RELATED to confirmed conditions
     - If no confirmed conditions found, use semantic matching to suggest possible conditions
-    - Returns 3-5 conditions with is_confirmed flag indicating explicit mention
-    - NOW ALSO tracks triggering keywords for transparency
+    - STRICT FILTERING: High confidence matches (>95%) require others to be >90%
+    - ADAPTIVE THRESHOLD: Threshold increases based on top match confidence
+    - MINIMUM KEYWORDS: Requires 3+ distinct clinical keywords per condition
+    - Returns 1-5 conditions based on clinical evidence strength
+    - Tracks triggering keywords for transparency
     
     Responsible for:
     - Mapping extracted keywords to chronic condition entries
-    - Returning 3–5 UNIQUE chronic condition suggestions
+    - Returning clinically accurate condition suggestions (not just similar words)
     - Marking confirmed vs suggested conditions
     - Tracking which keywords triggered each match
     """
@@ -1253,13 +1375,147 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
     # Sort final result by enhanced score
     result_list.sort(key=lambda x: x['similarity_score'], reverse=True)
     
-    # Return 3-5 conditions
-    # If we have confirmed conditions, we return what we have (even if less than 3)
-    # If no confirmed conditions and less than 3 suggestions, try with lower threshold
-    if confirmed_count == 0 and len(result_list) < 3 and len(result_list) > 0 and threshold > 0.5:
-        return match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_text, threshold=threshold - 0.1)
+    # ============================================================================
+    # ENHANCED ACCURACY FILTERING
+    # ============================================================================
     
-    return result_list[:5]
+    # Step 1: Validate keyword quality for each condition AND check for negations
+    validated_conditions = []
+    for condition_match in result_list:
+        condition_name = condition_match['condition']
+        keyword_matches = condition_match.get('triggering_keywords', [])
+        
+        # Confirmed conditions (direct mention) always pass validation
+        if condition_match.get('is_confirmed', False):
+            validated_conditions.append(condition_match)
+            continue
+        
+        # Check for negation even in suggested conditions
+        is_negated, negation_context = detect_negation_context(clinical_text, condition_name)
+        if is_negated:
+            print(f"   ⚠ Filtered out {condition_name}: condition is negated in note ('{negation_context}')")
+            continue
+        
+        # Suggested conditions must have quality keywords
+        if validate_keyword_quality(keyword_matches, condition_name, clinical_text):
+            validated_conditions.append(condition_match)
+        else:
+            print(f"   ⚠ Filtered out {condition_name}: insufficient keyword evidence (only {len(keyword_matches)} keywords)")
+    
+    if not validated_conditions:
+        print(f"   ⚠ No conditions passed keyword validation")
+        return []
+    
+    # Step 2: Apply strict filtering based on top match confidence
+    top_score = validated_conditions[0]['similarity_score']
+    filtered_conditions = [validated_conditions[0]]  # Always keep top match
+    
+    # Strict filtering thresholds
+    if top_score >= 0.95:
+        # Very high confidence top match - only keep others if they're also very high (>0.90)
+        min_secondary_score = 0.90
+        print(f"   🎯 High confidence match ({top_score:.3f}) - applying strict filter (≥{min_secondary_score})")
+    elif top_score >= 0.85:
+        # High confidence - require others to be strong (>0.80)
+        min_secondary_score = 0.80
+        print(f"   🎯 Strong match ({top_score:.3f}) - applying moderate filter (≥{min_secondary_score})")
+    elif top_score >= 0.75:
+        # Moderate confidence - allow reasonable matches (>0.70)
+        min_secondary_score = 0.70
+    else:
+        # Lower confidence - use adaptive threshold based on gap
+        min_secondary_score = max(0.65, top_score - 0.10)
+    
+    # Add secondary matches that meet the threshold
+    for condition in validated_conditions[1:]:
+        if condition['similarity_score'] >= min_secondary_score:
+            filtered_conditions.append(condition)
+        else:
+            print(f"   ⚠ Filtered out {condition['condition']}: score {condition['similarity_score']:.3f} below threshold {min_secondary_score:.3f}")
+    
+    # Step 3: Apply adaptive result count
+    # If top match is very strong (>0.95), prefer returning fewer conditions
+    if top_score >= 0.95 and len(filtered_conditions) == 1:
+        print(f"   ✓ Returning single high-confidence match")
+        return filtered_conditions[:1]
+    
+    # Step 4: Check for related conditions (comorbidities)
+    # If we have multiple conditions, verify they make clinical sense together
+    if len(filtered_conditions) > 1:
+        related_conditions = {
+            'Hypertension': [
+                'Cardiac Failure', 'Chronic Renal Disease', 'Cardiomyopathy', 
+                'Diabetes Mellitus Type 2', 'Hypothyroidism', 'Hyperlipidaemia'
+            ],
+            'Diabetes Mellitus Type 1': [
+                'Chronic Renal Disease', 'Hypertension', 'Hyperlipidaemia', 
+                'Hypothyroidism', 'Cardiac Failure'
+            ],
+            'Diabetes Mellitus Type 2': [
+                'Hypertension', 'Hyperlipidaemia', 'Chronic Renal Disease', 
+                'Cardiac Failure', 'Hypothyroidism', 'Chronic Obstructive Pulmonary Disease'
+            ],
+            'Cardiac Failure': [
+                'Hypertension', 'Cardiomyopathy', 'Chronic Renal Disease', 
+                'Hypothyroidism', 'Diabetes Mellitus Type 2', 'Hyperlipidaemia',
+                'Chronic Obstructive Pulmonary Disease'
+            ],
+            'Cardiomyopathy': [
+                'Cardiac Failure', 'Hypertension', 'Diabetes Mellitus Type 2',
+                'Hyperlipidaemia'
+            ],
+            'Chronic Renal Disease': [
+                'Hypertension', 'Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2', 
+                'Cardiac Failure', 'Hyperlipidaemia', 'Hypothyroidism'
+            ],
+            'Hyperlipidaemia': [
+                'Hypertension', 'Diabetes Mellitus Type 2', 'Hypothyroidism',
+                'Cardiac Failure', 'Cardiomyopathy', 'Chronic Renal Disease'
+            ],
+            'Asthma': [
+                'Chronic Obstructive Pulmonary Disease', 'Hyperlipidaemia'
+            ],
+            'Chronic Obstructive Pulmonary Disease': [
+                'Cardiac Failure', 'Hypertension', 'Diabetes Mellitus Type 2',
+                'Asthma', 'Hyperlipidaemia'
+            ],
+            'Epilepsy': [
+                'Hypothyroidism'
+            ],
+            'Hypothyroidism': [
+                'Hypertension', 'Diabetes Mellitus Type 2', 'Hyperlipidaemia',
+                'Cardiac Failure', 'Chronic Renal Disease'
+            ],
+            'Haemophilia': []  # Typically standalone
+        }
+        
+        # Keep top match and related conditions
+        top_condition_name = filtered_conditions[0]['condition']
+        clinically_valid = [filtered_conditions[0]]
+        
+        for condition in filtered_conditions[1:]:
+            condition_name = condition['condition']
+            
+            # Check if this condition is related to the top match
+            if top_condition_name in related_conditions:
+                if condition_name in related_conditions[top_condition_name]:
+                    clinically_valid.append(condition)
+                else:
+                    print(f"   ⚠ Filtered out {condition_name}: not clinically related to {top_condition_name}")
+            else:
+                # If top condition has no common comorbidities, be strict
+                if condition['similarity_score'] >= 0.90:
+                    clinically_valid.append(condition)
+                else:
+                    print(f"   ⚠ Filtered out {condition_name}: no clinical relationship established")
+        
+        filtered_conditions = clinically_valid
+    
+    # Return validated, filtered conditions (1-5 based on evidence)
+    final_count = min(len(filtered_conditions), 5)
+    print(f"   ✓ Returning {final_count} condition(s) after comprehensive filtering")
+    
+    return filtered_conditions[:final_count]
 
 
 @app.on_event("startup")
@@ -1271,7 +1527,12 @@ async def startup_event():
 
 @app.get("/")
 async def root():
-    return {"message": "SaluLink Authi API is running"}
+    import datetime
+    return {
+        "message": "SaluLink Authi API is running",
+        "version": "v2.1-accuracy-improved",
+        "loaded_at": datetime.datetime.now().isoformat()
+    }
 
 
 @app.get("/health")
