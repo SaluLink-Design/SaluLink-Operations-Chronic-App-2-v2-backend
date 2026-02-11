@@ -443,16 +443,25 @@ def get_condition_symptom_indicators():
             'reactive airway', 'bronchial hyperresponsiveness'
         ],
         'Diabetes Mellitus Type 1': [
+            # Strong Type 1 indicators
+            'ketoacidosis', 'dka', 'diabetic ketoacidosis', 
+            'insulin pump', 'continuous glucose monitor', 'cgm',
+            'juvenile diabetes', 'autoimmune diabetes',
+            'c-peptide low', 'antibodies positive',
+            # General symptoms (shared)
             'polyuria', 'polydipsia', 'polyphagia', 'weight loss',
-            'ketoacidosis', 'dka', 'insulin therapy', 'hyperglycemia',
-            'blood glucose', 'a1c', 'hba1c', 'insulin pump',
-            'continuous glucose monitor', 'cgm', 'diabetic ketoacidosis'
+            'insulin therapy', 'hyperglycemia', 'blood glucose', 'a1c', 'hba1c'
         ],
         'Diabetes Mellitus Type 2': [
-            'polyuria', 'polydipsia', 'hyperglycemia', 'metformin',
-            'oral hypoglycemic', 'insulin resistance', 'metabolic syndrome',
-            'elevated glucose', 'a1c', 'hba1c', 'prediabetes',
-            'glyburide', 'glipizide', 'acarbose', 'sitagliptin'
+            # Strong Type 2 indicators
+            'metformin', 'oral hypoglycemic', 'insulin resistance', 
+            'metabolic syndrome', 'prediabetes', 'obesity', 'overweight',
+            'glyburide', 'glipizide', 'acarbose', 'sitagliptin',
+            'glimepiride', 'pioglitazone', 'empagliflozin', 'dapagliflozin',
+            'adult-onset', 'lifestyle modification', 'diet controlled',
+            # General symptoms (shared)
+            'polyuria', 'polydipsia', 'hyperglycemia',
+            'elevated glucose', 'a1c', 'hba1c', 'blood glucose'
         ],
         'Hypertension': [
             'elevated bp', 'systolic pressure', 'diastolic pressure',
@@ -509,6 +518,95 @@ def get_condition_symptom_indicators():
     }
 
 
+def infer_diabetes_type_from_context(clinical_text):
+    """
+    When "diabetes" is mentioned without specifying type, use clinical context
+    to intelligently infer whether it's more likely Type 1 or Type 2
+    
+    Returns: 'type1', 'type2', or None (if can't determine)
+    """
+    import re
+    
+    clinical_lower = clinical_text.lower()
+    
+    # Strong Type 1 indicators (with weights)
+    type1_strong_indicators = {
+        'ketoacidosis': 5,  # Very strong Type 1 indicator
+        'dka': 5,
+        'diabetic ketoacidosis': 5,
+        'insulin pump': 3,
+        'cgm': 2,
+        'continuous glucose monitor': 2,
+        'juvenile diabetes': 3,
+        'autoimmune diabetes': 4,
+        'c-peptide': 2,
+        'islet cell antibodies': 3,
+        'brittle diabetes': 3
+    }
+    
+    # Strong Type 2 indicators (with weights)
+    type2_strong_indicators = {
+        'metformin': 2,
+        'glyburide': 2,
+        'glipizide': 2,
+        'glimepiride': 2,
+        'pioglitazone': 2,
+        'acarbose': 2,
+        'sitagliptin': 2,
+        'empagliflozin': 2,
+        'dapagliflozin': 2,
+        'oral hypoglycemic': 2,
+        'oral medication': 1.5,
+        'insulin resistance': 2,
+        'metabolic syndrome': 2,
+        'prediabetes': 2,
+        'adult-onset': 2,
+        'obesity': 1.5,
+        'obese': 1.5,
+        'overweight': 1,
+        'diet controlled': 1.5,
+        'lifestyle modification': 1
+    }
+    
+    # Calculate weighted scores
+    type1_score = sum(weight for indicator, weight in type1_strong_indicators.items() if indicator in clinical_lower)
+    type2_score = sum(weight for indicator, weight in type2_strong_indicators.items() if indicator in clinical_lower)
+    
+    # Age-based inference (if age is mentioned)
+    age_match = re.search(r'(\d+)[\s\-]*year[\s\-]*old', clinical_lower)
+    if age_match:
+        age = int(age_match.group(1))
+        if age < 30:
+            type1_score += 1  # Young age suggests Type 1
+        elif age > 40:
+            type2_score += 2  # Older age strongly suggests Type 2
+        elif age >= 30 and age <= 40:
+            type2_score += 0.5  # Slight bias toward Type 2
+    
+    # Check for "oral medications" or "pills" (suggests Type 2)
+    if re.search(r'oral\s+(medication|agent|drug|pill|hypoglycemic)', clinical_lower):
+        type2_score += 2
+    
+    # Check for "insulin therapy" or "insulin-requiring" context
+    # Note: This can be either type, but in context...
+    if 'insulin' in clinical_lower:
+        # If mentioned with "now requires" or "started on", likely Type 2 progressing
+        if re.search(r'(now|recently|started)\s+(on|requires?|needs?)\s+insulin', clinical_lower):
+            type2_score += 1
+        # If mentioned with "pump" or "intensive", likely Type 1
+        elif re.search(r'insulin\s+(pump|intensive|multiple)', clinical_lower):
+            type1_score += 2
+    
+    # If scores are tied or very close, default to Type 2 (90% of diabetes is Type 2)
+    if type1_score > type2_score:
+        return 'type1'
+    elif type2_score > type1_score:
+        return 'type2'
+    else:
+        # No clear indicators - default to Type 2 (much more common)
+        return 'type2'
+
+
 def find_direct_condition_matches(clinical_text):
     """
     Direct condition name matching - checks if condition names appear in clinical text
@@ -518,6 +616,7 @@ def find_direct_condition_matches(clinical_text):
     1. Exact condition name match (highest confidence - CONFIRMED)
     2. Common medical term aliases (e.g., "diabetic" -> Diabetes, "hypertensive" -> Hypertension)
     3. ICD description keyword matching (for specific subtypes)
+    4. INTELLIGENT DIABETES TYPE INFERENCE when type not specified
     
     Returns conditions with is_confirmed=True for explicit mentions
     """
@@ -536,13 +635,14 @@ def find_direct_condition_matches(clinical_text):
         'diabetes mellitus type 1': [
             'type 1 diabetes', 'type i diabetes', 't1dm', 'type1 diabetes',
             'insulin-dependent diabetes', 'insulin dependent diabetes', 'iddm',
-            'juvenile diabetes', 'autoimmune diabetes', 'brittle diabetes'
+            'juvenile diabetes', 'autoimmune diabetes', 'brittle diabetes',
+            'dm type 1', 'dm type i', 'dm1'
         ],
         'diabetes mellitus type 2': [
             'type 2 diabetes', 'type ii diabetes', 't2dm', 'type2 diabetes',
             'non-insulin-dependent diabetes', 'non insulin dependent diabetes', 'niddm',
             'adult-onset diabetes', 'metabolic diabetes', 'insulin resistance',
-            'non-insulin dependent diabetes'
+            'non-insulin dependent diabetes', 'dm type 2', 'dm type ii', 'dm2'
         ],
         'hypertension': [
             'high blood pressure', 'elevated blood pressure', 'hypertensive', 'htn',
@@ -666,6 +766,51 @@ def find_direct_condition_matches(clinical_text):
         # If we found a negated alias, skip checking other aliases for this condition
         if alias_found:
             continue
+    
+    # Strategy 2.5: Handle generic "diabetes" or "diabetic" mentions (without type specification)
+    # Use context clues to intelligently infer the type
+    generic_diabetes_patterns = [
+        r'\bdiabetes\b(?!\s+(mellitus\s+)?(type|i{1,2})\b)',  # "diabetes" but not "diabetes type"
+        r'\bdiabetic\b(?!\s+(type|i{1,2})\b)',  # "diabetic" without type
+        r'\bdm\b(?!\s+(type|i{1,2}|\d)\b)',  # "DM" without type
+    ]
+    
+    # Check if we already have a diabetes type match
+    has_diabetes_match = any('diabetes' in match['condition'].lower() for match in direct_matches.values())
+    
+    if not has_diabetes_match:  # Only infer if we haven't already matched a specific type
+        for pattern in generic_diabetes_patterns:
+            if re.search(pattern, clinical_text_lower, re.IGNORECASE):
+                # Check for negation
+                is_negated, _ = detect_negation_context(clinical_text, 'diabetes')
+                if is_negated:
+                    print(f"   ⚠ Skipping negated generic diabetes mention")
+                    break
+                
+                # Infer the type from context
+                inferred_type = infer_diabetes_type_from_context(clinical_text)
+                
+                if inferred_type == 'type1':
+                    target_condition = 'diabetes mellitus type 1'
+                    print(f"   ℹ️  Generic 'diabetes' detected - inferred as Type 1 based on context")
+                else:  # type2 or default
+                    target_condition = 'diabetes mellitus type 2'
+                    print(f"   ℹ️  Generic 'diabetes' detected - inferred as Type 2 based on context")
+                
+                # Add the inferred diabetes type
+                for entry in chronic_condition_embeddings:
+                    if entry['condition'].lower() == target_condition:
+                        condition_key = (entry['condition'], entry['icd_code'])
+                        if condition_key not in direct_matches:
+                            direct_matches[condition_key] = {
+                                'condition': entry['condition'],
+                                'icd_code': entry['icd_code'],
+                                'icd_description': entry['icd_description'],
+                                'similarity_score': 0.90,  # Slightly lower score for inferred type
+                                'match_type': 'inferred',
+                                'is_confirmed': True  # Still considered confirmed since diabetes was mentioned
+                            }
+                break  # Only infer once
     
     # Strategy 3: Check for specific ICD description terms (for subtypes of confirmed conditions)
     # Only use this to find specific ICD codes for already-confirmed conditions
@@ -1495,6 +1640,11 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         
         for condition in filtered_conditions[1:]:
             condition_name = condition['condition']
+            
+            # NEVER filter out confirmed conditions - they were explicitly mentioned in the note
+            if condition.get('is_confirmed', False):
+                clinically_valid.append(condition)
+                continue
             
             # Check if this condition is related to the top match
             if top_condition_name in related_conditions:
