@@ -124,60 +124,6 @@ def load_chronic_conditions():
         })
     
     print(f"Loaded {len(chronic_condition_embeddings)} chronic condition entries")
-    
-    # ============================================================================
-    # ADD SUPPLEMENTARY SYMPTOM-BASED EMBEDDINGS FOR ALL CONDITIONS
-    # ============================================================================
-    # These supplementary embeddings improve detection when clinical notes
-    # describe symptoms without explicitly naming the condition
-    
-    print("Adding symptom-based embeddings for enhanced detection...")
-    
-    symptom_descriptions = {
-        'Diabetes Mellitus Type 1': 'increased thirst polyuria polydipsia frequent urination fatigue weight loss ketoacidosis hyperglycemia insulin dependent juvenile diabetes autoimmune',
-        'Diabetes Mellitus Type 2': 'increased thirst polyuria polydipsia frequent urination fatigue slow healing obesity insulin resistance metabolic syndrome adult onset overweight',
-        'Hypertension': 'elevated blood pressure headache dizziness chest pain shortness of breath pounding heartbeat vision changes systolic diastolic high pressure',
-        'Asthma': 'wheezing shortness of breath dyspnea chest tightness nocturnal cough exercise intolerance bronchospasm reactive airway difficulty breathing',
-        'Cardiac Failure': 'shortness of breath dyspnea on exertion orthopnea paroxysmal nocturnal dyspnea edema fatigue leg swelling ankle swelling fluid retention',
-        'Chronic Obstructive Pulmonary Disease': 'chronic cough dyspnea sputum production wheezing barrel chest smoking history prolonged expiration emphysema bronchitis airflow obstruction',
-        'Chronic Renal Disease': 'fatigue decreased urine output edema nausea anemia uremia proteinuria elevated creatinine kidney failure renal insufficiency',
-        'Hypothyroidism': 'fatigue cold intolerance weight gain constipation dry skin bradycardia depression hair loss underactive thyroid myxedema hashimoto',
-        'Hyperlipidaemia': 'high cholesterol xanthomas family history coronary artery disease obesity elevated lipids dyslipidemia hypercholesterolemia triglycerides',
-        'Epilepsy': 'seizures convulsions loss of consciousness postictal confusion aura focal seizures tonic clonic movements grand mal petit mal seizure disorder',
-        'Cardiomyopathy': 'heart failure symptoms chest pain palpitations syncope dyspnea fatigue arrhythmia dilated hypertrophic reduced ejection fraction',
-        'Haemophilia': 'easy bruising prolonged bleeding spontaneous bleeding joint pain hemarthrosis family history clotting problems factor deficiency bleeding disorder'
-    }
-    
-    # Generate embeddings for symptom descriptions and add to condition database
-    symptom_embedding_count = 0
-    for condition_name, symptom_desc in symptom_descriptions.items():
-        # Generate embedding for the symptom description
-        keywords, embeddings = extract_keywords_clinicalbert(symptom_desc)
-        
-        if embeddings.nelement() > 0:
-            # Create average embedding for the symptom description
-            avg_symptom_embedding = torch.mean(embeddings, dim=0)
-            
-            # Find the first ICD code for this condition to use as reference
-            matching_entries = [entry for entry in chronic_condition_embeddings 
-                               if entry['condition'] == condition_name]
-            
-            if matching_entries:
-                # Add a supplementary entry with symptom-based embedding
-                # Use a distinct ICD code to mark it as a symptom-based entry
-                reference_icd = matching_entries[0]['icd_code']
-                
-                chronic_condition_embeddings.append({
-                    'condition': condition_name,
-                    'icd_code': reference_icd + '_SYMP',  # Mark as symptom-based
-                    'icd_description': f"Symptom-based: {symptom_desc[:80]}...",
-                    'embedding': avg_symptom_embedding,
-                    'is_symptom_embedding': True  # Flag for identification
-                })
-                symptom_embedding_count += 1
-    
-    print(f"Added {symptom_embedding_count} symptom-based embeddings")
-    print(f"Total embeddings in database: {len(chronic_condition_embeddings)}")
 
 
 def extract_keywords_clinicalbert(text: str):
@@ -188,10 +134,7 @@ def extract_keywords_clinicalbert(text: str):
     - Producing the keyword set for condition matching
     
     Processes clinical text and extracts meaningful keywords with embeddings
-    Enhanced to include phrase-level extraction for better clinical context
     """
-    import re
-    
     # Tokenize the input text
     inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
     
@@ -246,108 +189,6 @@ def extract_keywords_clinicalbert(text: str):
         avg_embedding = torch.mean(last_hidden_state[0, current_embedding_indices, :], dim=0)
         extracted_keywords.append(current_word)
         keyword_embeddings.append(avg_embedding)
-    
-    # ============================================================================
-    # PHRASE-LEVEL EXTRACTION (NEW)
-    # ============================================================================
-    # Extract multi-word medical phrases for better clinical context
-    # Patterns: [adjective] + [medical_term], [frequency] + [symptom]
-    # Examples: "increased thirst", "frequent urination", "persistent fatigue"
-    
-    # Define adjectives and frequency modifiers commonly used in clinical notes
-    clinical_modifiers = {
-        'increased', 'decreased', 'elevated', 'reduced', 'persistent', 'chronic',
-        'frequent', 'excessive', 'severe', 'mild', 'moderate', 'acute',
-        'progressive', 'recurrent', 'intermittent', 'constant', 'prolonged'
-    }
-    
-    # Define medical/symptom terms that commonly follow modifiers
-    medical_terms = {
-        'thirst', 'urination', 'fatigue', 'tired', 'tiredness',
-        'pain', 'bleeding', 'bruising', 'swelling', 'edema',
-        'cough', 'dyspnea', 'breathless', 'wheezing', 'chest',
-        'headache', 'dizziness', 'nausea', 'vomiting', 'weight',
-        'appetite', 'confusion', 'weakness', 'fever', 'sweating'
-    }
-    
-    # Look for 2-3 word phrases in the original text
-    text_lower = text.lower()
-    words = text_lower.split()
-    
-    for i in range(len(words) - 1):
-        # 2-word phrases: [modifier] + [medical_term]
-        word1 = words[i].strip('.,;:!?')
-        word2 = words[i + 1].strip('.,;:!?') if i + 1 < len(words) else ''
-        
-        if word1 in clinical_modifiers and word2 in medical_terms:
-            phrase = f"{word1} {word2}"
-            
-            # Find the phrase in the tokenized input to get embeddings
-            # Use regex to find token positions for this phrase
-            phrase_pattern = r'\b' + word1 + r'\s+' + word2 + r'\b'
-            if re.search(phrase_pattern, text_lower):
-                # Find approximate token positions for the phrase
-                # Since we already have tokens, find matching sequence
-                phrase_embedding_indices = []
-                for j in range(len(tokens) - 1):
-                    token_text = tokens[j].replace('##', '').lower()
-                    next_token_text = tokens[j + 1].replace('##', '').lower()
-                    
-                    # Check if tokens match phrase words
-                    if token_text in word1 or word1 in token_text:
-                        if next_token_text in word2 or word2 in next_token_text:
-                            # Found the phrase - collect embedding indices
-                            phrase_embedding_indices = [j, j + 1]
-                            # Include any subword tokens that follow
-                            k = j + 2
-                            while k < len(tokens) and tokens[k].startswith('##'):
-                                phrase_embedding_indices.append(k)
-                                k += 1
-                            break
-                
-                # If we found the phrase tokens, create phrase embedding
-                if phrase_embedding_indices:
-                    phrase_embedding = torch.mean(last_hidden_state[0, phrase_embedding_indices, :], dim=0)
-                    extracted_keywords.append(phrase)
-                    keyword_embeddings.append(phrase_embedding)
-        
-        # 3-word phrases: [modifier] + [modifier/descriptor] + [medical_term]
-        # Examples: "shortness of breath", "loss of consciousness"
-        if i + 2 < len(words):
-            word3 = words[i + 2].strip('.,;:!?')
-            three_word_phrase = f"{word1} {word2} {word3}"
-            
-            # Check for common 3-word medical phrases
-            common_3word_phrases = {
-                'shortness of breath', 'loss of consciousness', 'chest pain',
-                'weight gain', 'weight loss', 'blood pressure',
-                'heart failure', 'kidney disease', 'renal disease',
-                'difficulty breathing', 'joint pain', 'joint swelling',
-                'easy bruising', 'chronic cough', 'night sweats'
-            }
-            
-            if three_word_phrase in common_3word_phrases:
-                # Find tokens for 3-word phrase
-                phrase_embedding_indices = []
-                for j in range(len(tokens) - 2):
-                    # Simplified matching for 3-word phrases
-                    token_sequence = ' '.join([tokens[j].replace('##', ''), 
-                                              tokens[j+1].replace('##', ''), 
-                                              tokens[j+2].replace('##', '')]).lower()
-                    
-                    if three_word_phrase in token_sequence or token_sequence in three_word_phrase:
-                        phrase_embedding_indices = [j, j+1, j+2]
-                        # Include subword tokens
-                        k = j + 3
-                        while k < len(tokens) and tokens[k].startswith('##'):
-                            phrase_embedding_indices.append(k)
-                            k += 1
-                        break
-                
-                if phrase_embedding_indices:
-                    phrase_embedding = torch.mean(last_hidden_state[0, phrase_embedding_indices, :], dim=0)
-                    extracted_keywords.append(three_word_phrase)
-                    keyword_embeddings.append(phrase_embedding)
     
     embeddings_tensor = torch.stack(keyword_embeddings) if keyword_embeddings else torch.tensor([])
     return extracted_keywords, embeddings_tensor
@@ -602,25 +443,16 @@ def get_condition_symptom_indicators():
             'reactive airway', 'bronchial hyperresponsiveness'
         ],
         'Diabetes Mellitus Type 1': [
-            # Strong Type 1 indicators
-            'ketoacidosis', 'dka', 'diabetic ketoacidosis', 
-            'insulin pump', 'continuous glucose monitor', 'cgm',
-            'juvenile diabetes', 'autoimmune diabetes',
-            'c-peptide low', 'antibodies positive',
-            # General symptoms (shared)
             'polyuria', 'polydipsia', 'polyphagia', 'weight loss',
-            'insulin therapy', 'hyperglycemia', 'blood glucose', 'a1c', 'hba1c'
+            'ketoacidosis', 'dka', 'insulin therapy', 'hyperglycemia',
+            'blood glucose', 'a1c', 'hba1c', 'insulin pump',
+            'continuous glucose monitor', 'cgm', 'diabetic ketoacidosis'
         ],
         'Diabetes Mellitus Type 2': [
-            # Strong Type 2 indicators
-            'metformin', 'oral hypoglycemic', 'insulin resistance', 
-            'metabolic syndrome', 'prediabetes', 'obesity', 'overweight',
-            'glyburide', 'glipizide', 'acarbose', 'sitagliptin',
-            'glimepiride', 'pioglitazone', 'empagliflozin', 'dapagliflozin',
-            'adult-onset', 'lifestyle modification', 'diet controlled',
-            # General symptoms (shared)
-            'polyuria', 'polydipsia', 'hyperglycemia',
-            'elevated glucose', 'a1c', 'hba1c', 'blood glucose'
+            'polyuria', 'polydipsia', 'hyperglycemia', 'metformin',
+            'oral hypoglycemic', 'insulin resistance', 'metabolic syndrome',
+            'elevated glucose', 'a1c', 'hba1c', 'prediabetes',
+            'glyburide', 'glipizide', 'acarbose', 'sitagliptin'
         ],
         'Hypertension': [
             'elevated bp', 'systolic pressure', 'diastolic pressure',
@@ -677,431 +509,6 @@ def get_condition_symptom_indicators():
     }
 
 
-def infer_diabetes_type_from_context(clinical_text):
-    """
-    When "diabetes" is mentioned without specifying type, use clinical context
-    to intelligently infer whether it's more likely Type 1 or Type 2
-    
-    Returns: 'type1', 'type2', or None (if can't determine)
-    """
-    import re
-    
-    clinical_lower = clinical_text.lower()
-    
-    # Strong Type 1 indicators (with weights)
-    type1_strong_indicators = {
-        'ketoacidosis': 5,  # Very strong Type 1 indicator
-        'dka': 5,
-        'diabetic ketoacidosis': 5,
-        'insulin pump': 3,
-        'cgm': 2,
-        'continuous glucose monitor': 2,
-        'juvenile diabetes': 3,
-        'autoimmune diabetes': 4,
-        'c-peptide': 2,
-        'islet cell antibodies': 3,
-        'brittle diabetes': 3
-    }
-    
-    # Strong Type 2 indicators (with weights)
-    type2_strong_indicators = {
-        'metformin': 2,
-        'glyburide': 2,
-        'glipizide': 2,
-        'glimepiride': 2,
-        'pioglitazone': 2,
-        'acarbose': 2,
-        'sitagliptin': 2,
-        'empagliflozin': 2,
-        'dapagliflozin': 2,
-        'oral hypoglycemic': 2,
-        'oral medication': 1.5,
-        'insulin resistance': 2,
-        'metabolic syndrome': 2,
-        'prediabetes': 2,
-        'adult-onset': 2,
-        'obesity': 1.5,
-        'obese': 1.5,
-        'overweight': 1,
-        'diet controlled': 1.5,
-        'lifestyle modification': 1
-    }
-    
-    # Calculate weighted scores
-    type1_score = sum(weight for indicator, weight in type1_strong_indicators.items() if indicator in clinical_lower)
-    type2_score = sum(weight for indicator, weight in type2_strong_indicators.items() if indicator in clinical_lower)
-    
-    # Age-based inference (if age is mentioned)
-    age_match = re.search(r'(\d+)[\s\-]*year[\s\-]*old', clinical_lower)
-    if age_match:
-        age = int(age_match.group(1))
-        if age < 30:
-            type1_score += 1  # Young age suggests Type 1
-        elif age > 40:
-            type2_score += 2  # Older age strongly suggests Type 2
-        elif age >= 30 and age <= 40:
-            type2_score += 0.5  # Slight bias toward Type 2
-    
-    # Check for "oral medications" or "pills" (suggests Type 2)
-    if re.search(r'oral\s+(medication|agent|drug|pill|hypoglycemic)', clinical_lower):
-        type2_score += 2
-    
-    # Check for "insulin therapy" or "insulin-requiring" context
-    # Note: This can be either type, but in context...
-    if 'insulin' in clinical_lower:
-        # If mentioned with "now requires" or "started on", likely Type 2 progressing
-        if re.search(r'(now|recently|started)\s+(on|requires?|needs?)\s+insulin', clinical_lower):
-            type2_score += 1
-        # If mentioned with "pump" or "intensive", likely Type 1
-        elif re.search(r'insulin\s+(pump|intensive|multiple)', clinical_lower):
-            type1_score += 2
-    
-    # If scores are tied or very close, default to Type 2 (90% of diabetes is Type 2)
-    if type1_score > type2_score:
-        return 'type1'
-    elif type2_score > type1_score:
-        return 'type2'
-    else:
-        # No clear indicators - default to Type 2 (much more common)
-        return 'type2'
-
-
-def detect_symptom_patterns(clinical_text: str):
-    """
-    Detects classic symptom patterns that strongly indicate specific conditions.
-    Returns high-confidence condition matches based on symptom combinations.
-    
-    This function recognizes clinical symptom triads and patterns across all 12 chronic conditions.
-    Uses pattern matching with synonyms and proportional scoring based on symptom presence.
-    
-    Returns:
-        List[Dict]: List of conditions detected via symptom patterns with confidence scores
-    """
-    import re
-    
-    clinical_lower = clinical_text.lower()
-    detected_conditions = []
-    
-    # Define comprehensive symptom patterns for ALL 12 conditions
-    # Each pattern has: symptoms list, confidence score, and minimum required symptoms
-    symptom_patterns = {
-        'Diabetes Mellitus': {
-            'patterns': [
-                {
-                    'name': 'classic_triad',
-                    'symptoms': [
-                        ['thirst', 'polydipsia', 'increased thirst', 'excessive thirst'],
-                        ['urination', 'polyuria', 'frequent urination', 'excessive urination', 'urinating'],
-                        ['fatigue', 'tired', 'tiredness', 'exhaustion', 'lethargy']
-                    ],
-                    'confidence': 0.92,
-                    'min_symptoms': 3
-                },
-                {
-                    'name': 'classic_quad',
-                    'symptoms': [
-                        ['thirst', 'polydipsia', 'increased thirst'],
-                        ['urination', 'polyuria', 'frequent urination'],
-                        ['fatigue', 'tired', 'tiredness'],
-                        ['weight loss', 'losing weight', 'polyphagia', 'increased appetite', 'hunger']
-                    ],
-                    'confidence': 0.95,
-                    'min_symptoms': 3
-                }
-            ]
-        },
-        'Hypertension': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['headache', 'head ache', 'cephalgia'],
-                        ['elevated', 'high', 'raised', 'pressure', 'bp'],
-                        ['dizziness', 'dizzy', 'lightheaded', 'vertigo']
-                    ],
-                    'confidence': 0.88,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'target_organ',
-                    'symptoms': [
-                        ['headache', 'head ache'],
-                        ['chest pain', 'angina'],
-                        ['shortness of breath', 'dyspnea', 'breathless']
-                    ],
-                    'confidence': 0.91,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Asthma': {
-            'patterns': [
-                {
-                    'name': 'classic_triad',
-                    'symptoms': [
-                        ['wheezing', 'wheeze', 'whistling breathing'],
-                        ['dyspnea', 'shortness of breath', 'breathless', 'difficulty breathing'],
-                        ['chest tightness', 'tight chest', 'chest discomfort']
-                    ],
-                    'confidence': 0.90,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'with_triggers',
-                    'symptoms': [
-                        ['nocturnal cough', 'nighttime cough', 'cough at night'],
-                        ['exercise', 'exertion', 'activity'],
-                        ['wheezing', 'wheeze']
-                    ],
-                    'confidence': 0.92,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Cardiac Failure': {
-            'patterns': [
-                {
-                    'name': 'classic_triad',
-                    'symptoms': [
-                        ['dyspnea on exertion', 'shortness of breath', 'breathless', 'difficulty breathing'],
-                        ['edema', 'swelling', 'leg swelling', 'ankle swelling', 'peripheral edema'],
-                        ['orthopnea', 'lying flat', 'pillows', 'elevated']
-                    ],
-                    'confidence': 0.91,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'severe',
-                    'symptoms': [
-                        ['dyspnea', 'breathless', 'shortness of breath'],
-                        ['paroxysmal nocturnal dyspnea', 'pnd', 'waking up breathless'],
-                        ['fatigue', 'tired', 'weakness'],
-                        ['edema', 'swelling']
-                    ],
-                    'confidence': 0.93,
-                    'min_symptoms': 3
-                }
-            ]
-        },
-        'Chronic Obstructive Pulmonary Disease': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['chronic cough', 'persistent cough', 'cough'],
-                        ['dyspnea', 'shortness of breath', 'breathless'],
-                        ['sputum', 'phlegm', 'mucus production']
-                    ],
-                    'confidence': 0.89,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'with_history',
-                    'symptoms': [
-                        ['smoking', 'smoker', 'tobacco', 'cigarettes', 'pack year'],
-                        ['cough', 'chronic cough'],
-                        ['barrel chest', 'hyperinflation', 'emphysema']
-                    ],
-                    'confidence': 0.92,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Chronic Renal Disease': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['fatigue', 'tired', 'weakness'],
-                        ['edema', 'swelling', 'fluid retention'],
-                        ['decreased urine', 'oliguria', 'reduced urine', 'less urine']
-                    ],
-                    'confidence': 0.87,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'advanced',
-                    'symptoms': [
-                        ['nausea', 'vomiting', 'uremia', 'uremic'],
-                        ['anemia', 'pale', 'weakness'],
-                        ['edema', 'swelling'],
-                        ['fatigue', 'tired']
-                    ],
-                    'confidence': 0.90,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Hypothyroidism': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['fatigue', 'tired', 'tiredness', 'exhaustion'],
-                        ['cold intolerance', 'cold sensitivity', 'feeling cold', 'cold'],
-                        ['weight gain', 'gaining weight', 'increased weight']
-                    ],
-                    'confidence': 0.87,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'extended',
-                    'symptoms': [
-                        ['fatigue', 'tired'],
-                        ['cold intolerance', 'feeling cold'],
-                        ['constipation', 'bowel', 'irregular'],
-                        ['dry skin', 'skin dryness', 'brittle hair']
-                    ],
-                    'confidence': 0.90,
-                    'min_symptoms': 3
-                }
-            ]
-        },
-        'Hyperlipidaemia': {
-            'patterns': [
-                {
-                    'name': 'risk_pattern',
-                    'symptoms': [
-                        ['family history', 'familial', 'hereditary'],
-                        ['xanthomas', 'xanthelasma', 'deposits'],
-                        ['obesity', 'obese', 'overweight']
-                    ],
-                    'confidence': 0.85,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Epilepsy': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['seizure', 'seizures', 'convulsions', 'fits', 'convulsing'],
-                        ['loss of consciousness', 'unconscious', 'unresponsive'],
-                        ['postictal', 'confusion', 'confused after']
-                    ],
-                    'confidence': 0.93,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'focal',
-                    'symptoms': [
-                        ['focal seizure', 'partial seizure', 'localized'],
-                        ['aura', 'warning sign', 'sensation before'],
-                        ['altered awareness', 'confused', 'disoriented']
-                    ],
-                    'confidence': 0.90,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Cardiomyopathy': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['heart failure', 'cardiac', 'heart'],
-                        ['chest pain', 'angina', 'chest discomfort'],
-                        ['palpitations', 'irregular heartbeat', 'arrhythmia']
-                    ],
-                    'confidence': 0.88,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'specific',
-                    'symptoms': [
-                        ['dyspnea', 'shortness of breath', 'breathless'],
-                        ['syncope', 'fainting', 'passing out', 'blackout'],
-                        ['family history', 'familial', 'hereditary']
-                    ],
-                    'confidence': 0.90,
-                    'min_symptoms': 2
-                }
-            ]
-        },
-        'Haemophilia': {
-            'patterns': [
-                {
-                    'name': 'classic',
-                    'symptoms': [
-                        ['easy bruising', 'bruises easily', 'bruising'],
-                        ['prolonged bleeding', 'excessive bleeding', 'bleeding'],
-                        ['joint pain', 'joint swelling', 'hemarthrosis', 'joint bleeding']
-                    ],
-                    'confidence': 0.92,
-                    'min_symptoms': 2
-                },
-                {
-                    'name': 'family',
-                    'symptoms': [
-                        ['family history', 'familial', 'hereditary'],
-                        ['bleeding', 'bruising'],
-                        ['hemarthrosis', 'joint', 'swelling']
-                    ],
-                    'confidence': 0.94,
-                    'min_symptoms': 2
-                }
-            ]
-        }
-    }
-    
-    # Check each condition's patterns
-    for condition_name, condition_info in symptom_patterns.items():
-        for pattern in condition_info['patterns']:
-            symptoms_found = 0
-            total_symptoms = len(pattern['symptoms'])
-            
-            # Check each symptom group (synonyms)
-            for symptom_group in pattern['symptoms']:
-                # Check if any synonym in the group is present
-                if any(re.search(r'\b' + re.escape(symptom) + r'\b', clinical_lower) for symptom in symptom_group):
-                    symptoms_found += 1
-            
-            # Calculate proportional confidence
-            if symptoms_found >= pattern['min_symptoms']:
-                # Proportional scoring: (symptoms_found / total_symptoms) * base_confidence
-                proportion = symptoms_found / total_symptoms
-                adjusted_confidence = pattern['confidence'] * proportion
-                
-                # Only include if confidence is still reasonably high (≥70% of base)
-                if adjusted_confidence >= (pattern['confidence'] * 0.70):
-                    detected_conditions.append({
-                        'condition': condition_name,
-                        'pattern_name': pattern['name'],
-                        'symptoms_found': symptoms_found,
-                        'total_symptoms': total_symptoms,
-                        'confidence': adjusted_confidence
-                    })
-                    break  # Only use first matching pattern for each condition
-    
-    # Format results to match condition structure
-    formatted_results = []
-    for detection in detected_conditions:
-        # Get ICD codes for this condition from chronic_condition_embeddings
-        condition_entries = [entry for entry in chronic_condition_embeddings 
-                           if entry['condition'] == detection['condition']]
-        
-        if condition_entries:
-            # Use the first ICD code entry for this condition
-            entry = condition_entries[0]
-            formatted_results.append({
-                'condition': detection['condition'],
-                'icd_code': entry['icd_code'],
-                'icd_description': entry['icd_description'],
-                'similarity_score': detection['confidence'],
-                'is_confirmed': False,
-                'is_symptom_based': True,
-                'match_type': 'symptom_pattern',
-                'pattern_details': {
-                    'pattern_name': detection['pattern_name'],
-                    'symptoms_found': detection['symptoms_found'],
-                    'total_symptoms': detection['total_symptoms']
-                }
-            })
-    
-    return formatted_results
-
-
 def find_direct_condition_matches(clinical_text):
     """
     Direct condition name matching - checks if condition names appear in clinical text
@@ -1111,7 +518,6 @@ def find_direct_condition_matches(clinical_text):
     1. Exact condition name match (highest confidence - CONFIRMED)
     2. Common medical term aliases (e.g., "diabetic" -> Diabetes, "hypertensive" -> Hypertension)
     3. ICD description keyword matching (for specific subtypes)
-    4. INTELLIGENT DIABETES TYPE INFERENCE when type not specified
     
     Returns conditions with is_confirmed=True for explicit mentions
     """
@@ -1130,14 +536,13 @@ def find_direct_condition_matches(clinical_text):
         'diabetes mellitus type 1': [
             'type 1 diabetes', 'type i diabetes', 't1dm', 'type1 diabetes',
             'insulin-dependent diabetes', 'insulin dependent diabetes', 'iddm',
-            'juvenile diabetes', 'autoimmune diabetes', 'brittle diabetes',
-            'dm type 1', 'dm type i', 'dm1'
+            'juvenile diabetes', 'autoimmune diabetes', 'brittle diabetes'
         ],
         'diabetes mellitus type 2': [
             'type 2 diabetes', 'type ii diabetes', 't2dm', 'type2 diabetes',
             'non-insulin-dependent diabetes', 'non insulin dependent diabetes', 'niddm',
             'adult-onset diabetes', 'metabolic diabetes', 'insulin resistance',
-            'non-insulin dependent diabetes', 'dm type 2', 'dm type ii', 'dm2'
+            'non-insulin dependent diabetes'
         ],
         'hypertension': [
             'high blood pressure', 'elevated blood pressure', 'hypertensive', 'htn',
@@ -1262,51 +667,6 @@ def find_direct_condition_matches(clinical_text):
         if alias_found:
             continue
     
-    # Strategy 2.5: Handle generic "diabetes" or "diabetic" mentions (without type specification)
-    # Use context clues to intelligently infer the type
-    generic_diabetes_patterns = [
-        r'\bdiabetes\b(?!\s+(mellitus\s+)?(type|i{1,2})\b)',  # "diabetes" but not "diabetes type"
-        r'\bdiabetic\b(?!\s+(type|i{1,2})\b)',  # "diabetic" without type
-        r'\bdm\b(?!\s+(type|i{1,2}|\d)\b)',  # "DM" without type
-    ]
-    
-    # Check if we already have a diabetes type match
-    has_diabetes_match = any('diabetes' in match['condition'].lower() for match in direct_matches.values())
-    
-    if not has_diabetes_match:  # Only infer if we haven't already matched a specific type
-        for pattern in generic_diabetes_patterns:
-            if re.search(pattern, clinical_text_lower, re.IGNORECASE):
-                # Check for negation
-                is_negated, _ = detect_negation_context(clinical_text, 'diabetes')
-                if is_negated:
-                    print(f"   ⚠ Skipping negated generic diabetes mention")
-                    break
-                
-                # Infer the type from context
-                inferred_type = infer_diabetes_type_from_context(clinical_text)
-                
-                if inferred_type == 'type1':
-                    target_condition = 'diabetes mellitus type 1'
-                    print(f"   ℹ️  Generic 'diabetes' detected - inferred as Type 1 based on context")
-                else:  # type2 or default
-                    target_condition = 'diabetes mellitus type 2'
-                    print(f"   ℹ️  Generic 'diabetes' detected - inferred as Type 2 based on context")
-                
-                # Add the inferred diabetes type
-                for entry in chronic_condition_embeddings:
-                    if entry['condition'].lower() == target_condition:
-                        condition_key = (entry['condition'], entry['icd_code'])
-                        if condition_key not in direct_matches:
-                            direct_matches[condition_key] = {
-                                'condition': entry['condition'],
-                                'icd_code': entry['icd_code'],
-                                'icd_description': entry['icd_description'],
-                                'similarity_score': 0.90,  # Slightly lower score for inferred type
-                                'match_type': 'inferred',
-                                'is_confirmed': True  # Still considered confirmed since diabetes was mentioned
-                            }
-                break  # Only infer once
-    
     # Strategy 3: Check for specific ICD description terms (for subtypes of confirmed conditions)
     # Only use this to find specific ICD codes for already-confirmed conditions
     confirmed_condition_names = set(match['condition'] for match in direct_matches.values())
@@ -1340,78 +700,6 @@ def find_direct_condition_matches(clinical_text):
                             'is_confirmed': True  # Still confirmed - specific subtype
                         }
                     break
-    
-    # Strategy 2.6: Symptom-based condition detection (applies to ALL conditions)
-    # Check for symptom patterns when no direct condition mentions found
-    symptom_detected_conditions = detect_symptom_patterns(clinical_text)
-    
-    for symptom_match in symptom_detected_conditions:
-        condition_name = symptom_match['condition']
-        
-        # Special handling for Diabetes Mellitus - determine type or return both
-        if condition_name == 'Diabetes Mellitus':
-            # Check if we already have a confirmed diabetes type
-            has_diabetes_type_confirmed = any(
-                'Diabetes Mellitus Type' in match['condition'] 
-                for match in direct_matches.values()
-            )
-            
-            if not has_diabetes_type_confirmed:
-                # Use intelligent type inference
-                diabetes_type = infer_diabetes_type_from_context(clinical_text)
-                
-                if diabetes_type is None:
-                    # Cannot determine type - return BOTH Type 1 and Type 2
-                    # This allows clinicians to make the final determination
-                    for diabetes_condition in ['Diabetes Mellitus Type 1', 'Diabetes Mellitus Type 2']:
-                        # Get ICD codes for this specific diabetes type
-                        diabetes_entries = [entry for entry in chronic_condition_embeddings 
-                                          if entry['condition'] == diabetes_condition]
-                        
-                        if diabetes_entries:
-                            entry = diabetes_entries[0]
-                            condition_key = (diabetes_condition, entry['icd_code'])
-                            if condition_key not in direct_matches:
-                                # Slight confidence difference to distinguish
-                                confidence = 0.91 if '1' in diabetes_condition else 0.90
-                                direct_matches[condition_key] = {
-                                    'condition': diabetes_condition,
-                                    'icd_code': entry['icd_code'],
-                                    'icd_description': entry['icd_description'],
-                                    'similarity_score': confidence,
-                                    'match_type': 'symptom_pattern',
-                                    'is_confirmed': False,
-                                    'is_symptom_based': True,
-                                    'pattern_details': symptom_match.get('pattern_details', {})
-                                }
-                                print(f"   ✓ SYMPTOM-BASED detection: {diabetes_condition} (type ambiguous, returning both)")
-                else:
-                    # Type determined - add specific type only
-                    specific_type = 'Diabetes Mellitus Type 1' if diabetes_type == 'type1' else 'Diabetes Mellitus Type 2'
-                    diabetes_entries = [entry for entry in chronic_condition_embeddings 
-                                      if entry['condition'] == specific_type]
-                    
-                    if diabetes_entries:
-                        entry = diabetes_entries[0]
-                        condition_key = (specific_type, entry['icd_code'])
-                        if condition_key not in direct_matches:
-                            direct_matches[condition_key] = {
-                                'condition': specific_type,
-                                'icd_code': entry['icd_code'],
-                                'icd_description': entry['icd_description'],
-                                'similarity_score': 0.92,  # Higher confidence when type determined
-                                'match_type': 'symptom_pattern',
-                                'is_confirmed': False,
-                                'is_symptom_based': True,
-                                'pattern_details': symptom_match.get('pattern_details', {})
-                            }
-                            print(f"   ✓ SYMPTOM-BASED detection: {specific_type} (type inferred from context)")
-        else:
-            # For all other conditions, add them directly
-            condition_key = (symptom_match['condition'], symptom_match['icd_code'])
-            if condition_key not in direct_matches:
-                direct_matches[condition_key] = symptom_match
-                print(f"   ✓ SYMPTOM-BASED detection: {symptom_match['condition']}")
     
     return list(direct_matches.values())
 
@@ -1917,21 +1205,9 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
                     
                     similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
                     
-                    # ============================================================================
-                    # SYMPTOM INDICATOR BOOST
-                    # ============================================================================
-                    # Apply 25% boost if keyword matches a known symptom indicator for this condition
-                    condition_name = condition_data['condition']
-                    condition_symptom_indicators = get_condition_symptom_indicators()
-                    
-                    if condition_name in condition_symptom_indicators:
-                        # Check if the current keyword is a symptom indicator
-                        if any(indicator in current_keyword.lower() or current_keyword.lower() in indicator 
-                               for indicator in condition_symptom_indicators[condition_name]):
-                            similarity = min(similarity * 1.25, 1.0)  # 25% boost, capped at 1.0
-                    
                     # Higher threshold for suggested conditions when we have confirmed ones
                     if similarity >= 0.75:  # Stricter threshold
+                        condition_name = condition_data['condition']
                         
                         if condition_name not in condition_scores:
                             condition_scores[condition_name] = []
@@ -1970,20 +1246,8 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
                 
                 similarity = calculate_cosine_similarity(keyword_embedding, condition_embedding)
                 
-                # ============================================================================
-                # SYMPTOM INDICATOR BOOST
-                # ============================================================================
-                # Apply 25% boost if keyword matches a known symptom indicator for this condition
-                condition_name = condition_data['condition']
-                condition_symptom_indicators = get_condition_symptom_indicators()
-                
-                if condition_name in condition_symptom_indicators:
-                    # Check if the current keyword is a symptom indicator
-                    if any(indicator in current_keyword.lower() or current_keyword.lower() in indicator 
-                           for indicator in condition_symptom_indicators[condition_name]):
-                        similarity = min(similarity * 1.25, 1.0)  # 25% boost, capped at 1.0
-                
                 if similarity >= threshold:
+                    condition_name = condition_data['condition']
                     
                     if condition_name not in condition_scores:
                         condition_scores[condition_name] = []
@@ -2142,29 +1406,24 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         print(f"   ⚠ No conditions passed keyword validation")
         return []
     
-    # Step 2: Apply adaptive filtering based on top match confidence
-    # UPDATED: Relaxed thresholds by 5% for better symptom-based detection
+    # Step 2: Apply strict filtering based on top match confidence
     top_score = validated_conditions[0]['similarity_score']
     filtered_conditions = [validated_conditions[0]]  # Always keep top match
     
-    # Adaptive filtering thresholds (relaxed for symptom-based detection)
+    # Strict filtering thresholds
     if top_score >= 0.95:
-        # Very high confidence - can return 1 OR multiple if strong comorbidities present
-        min_secondary_score = 0.85  # Relaxed from 0.90
+        # Very high confidence top match - only keep others if they're also very high (>0.90)
+        min_secondary_score = 0.90
         print(f"   🎯 High confidence match ({top_score:.3f}) - applying strict filter (≥{min_secondary_score})")
-    elif top_score >= 0.90:
-        # High confidence - require others to be strong
-        min_secondary_score = 0.80
-        print(f"   🎯 Very strong match ({top_score:.3f}) - applying moderate filter (≥{min_secondary_score})")
     elif top_score >= 0.85:
-        # Strong confidence - allow strong secondary matches
-        min_secondary_score = 0.75  # Relaxed from 0.80
-        print(f"   🎯 Strong match ({top_score:.3f}) - applying relaxed filter (≥{min_secondary_score})")
+        # High confidence - require others to be strong (>0.80)
+        min_secondary_score = 0.80
+        print(f"   🎯 Strong match ({top_score:.3f}) - applying moderate filter (≥{min_secondary_score})")
     elif top_score >= 0.75:
-        # Moderate confidence - allow reasonable matches
+        # Moderate confidence - allow reasonable matches (>0.70)
         min_secondary_score = 0.70
     else:
-        # Lower confidence - ensure minimum 3 conditions with adaptive threshold
+        # Lower confidence - use adaptive threshold based on gap
         min_secondary_score = max(0.65, top_score - 0.10)
     
     # Add secondary matches that meet the threshold
@@ -2174,19 +1433,11 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         else:
             print(f"   ⚠ Filtered out {condition['condition']}: score {condition['similarity_score']:.3f} below threshold {min_secondary_score:.3f}")
     
-    # Step 3: Smart adaptive result count (1 vs 3-5)
-    # Return 1 condition ONLY if:
-    # - Top score >= 0.95 AND
-    # - Either only 1 condition OR all others are weak (< 0.85)
-    if top_score >= 0.95:
-        if len(filtered_conditions) == 1:
-            print(f"   ✓ Returning single high-confidence match (only valid match)")
-            return filtered_conditions[:1]
-        elif all(c['similarity_score'] < 0.85 for c in filtered_conditions[1:]):
-            print(f"   ✓ Returning single high-confidence match (others too weak)")
-            return filtered_conditions[:1]
-        else:
-            print(f"   ✓ Top match strong, but {len(filtered_conditions)-1} strong comorbidities present - returning all")
+    # Step 3: Apply adaptive result count
+    # If top match is very strong (>0.95), prefer returning fewer conditions
+    if top_score >= 0.95 and len(filtered_conditions) == 1:
+        print(f"   ✓ Returning single high-confidence match")
+        return filtered_conditions[:1]
     
     # Step 4: Check for related conditions (comorbidities)
     # If we have multiple conditions, verify they make clinical sense together
@@ -2245,11 +1496,6 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         for condition in filtered_conditions[1:]:
             condition_name = condition['condition']
             
-            # NEVER filter out confirmed conditions - they were explicitly mentioned in the note
-            if condition.get('is_confirmed', False):
-                clinically_valid.append(condition)
-                continue
-            
             # Check if this condition is related to the top match
             if top_condition_name in related_conditions:
                 if condition_name in related_conditions[top_condition_name]:
@@ -2265,18 +1511,9 @@ def match_conditions(clinical_keywords, clinical_keyword_embeddings, clinical_te
         
         filtered_conditions = clinically_valid
     
-    # Return validated, filtered conditions (3-5 based on evidence, or fewer if justified)
-    # Smart result count:
-    # - If top_score >= 0.95 and passed earlier checks: already returned 1 condition
-    # - Otherwise: Return 3-5 conditions (or fewer if not enough valid matches)
+    # Return validated, filtered conditions (1-5 based on evidence)
     final_count = min(len(filtered_conditions), 5)
-    
-    # Ensure minimum of 3 conditions when top score < 0.95 (unless fewer valid matches exist)
-    if top_score < 0.95 and len(filtered_conditions) >= 3:
-        final_count = max(3, min(len(filtered_conditions), 5))
-        print(f"   ✓ Returning {final_count} condition(s) (min 3 for top_score < 0.95)")
-    else:
-        print(f"   ✓ Returning {final_count} condition(s) after comprehensive filtering")
+    print(f"   ✓ Returning {final_count} condition(s) after comprehensive filtering")
     
     return filtered_conditions[:final_count]
 
